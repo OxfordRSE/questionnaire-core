@@ -1,0 +1,29 @@
+{
+  "name": "questionnaire-core",
+  "version": "0.0.1",
+  "description": "Questionnaire/Survey structure and behaviour",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [
+    "questionnaire",
+    "survey",
+    "questions",
+    "answers",
+    "science",
+    "behavioural",
+    "census",
+    "clinical",
+    "medical",
+    "psychology",
+    "psychiatry",
+    "economics",
+    "demographics"
+  ],
+  "author": "Matt Jaquiery",
+  "license": "ISC",
+  "devDependencies": {
+    "typescript": "^4.8.4"
+  }
+}
