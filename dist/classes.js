@@ -1,129 +1,156 @@
 "use strict";
+var __assign = (this && this.__assign) || function () {
+    __assign = Object.assign || function(t) {
+        for (var s, i = 1, n = arguments.length; i < n; i++) {
+            s = arguments[i];
+            for (var p in s) if (Object.prototype.hasOwnProperty.call(s, p))
+                t[p] = s[p];
+        }
+        return t;
+    };
+    return __assign.apply(this, arguments);
+};
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.Item = exports.CounterSet = exports.Counter = exports.Questionnaire = void 0;
-const types_1 = require("./types");
-class Questionnaire {
-    constructor(props) {
+var types_1 = require("./types");
+var Questionnaire = /** @class */ (function () {
+    function Questionnaire(props) {
         this._data = undefined;
         this.item_history = [];
         this.items = props.items;
         this.onComplete = props.onComplete;
         this.counters = new CounterSet(this);
         if (!this.items.length)
-            throw `Questionnaire requires at least one item`;
+            throw "Questionnaire requires at least one item";
         this.current_item = this.items[0];
     }
-    next_q(ans) {
+    Questionnaire.prototype.next_q = function (ans) {
         if (typeof this.current_item === "undefined") {
-            throw `Cannot process next_q for undefined current_item [${this.item_history.map((i) => i.id)}]`;
+            throw "Cannot process next_q for undefined current_item [".concat(this.item_history.map(function (i) { return i.id; }), "]");
         }
         // Process answer
         if (typeof ans === "undefined" &&
             this.current_item.type !== types_1.ItemType.NONE) {
-            console.warn(`Question ${this.current_item.id} must have an answer.`);
+            console.warn("Question ".concat(this.current_item.id, " must have an answer."));
             return;
         }
         this.current_item.answer = ans
-            ? Object.assign(Object.assign({}, ans), { utc_time: new Date().toUTCString() }) : undefined;
+            ? __assign(__assign({}, ans), { utc_time: new Date().toUTCString() }) : undefined;
         this.current_item.handleAnswer(ans, this);
         this.item_history.push(this.current_item);
         this.current_item = this.current_item.next_item(ans, this);
         if (!this.current_item)
             this.onComplete(this);
-    }
-    last_q() {
+    };
+    Questionnaire.prototype.last_q = function () {
         if (typeof this.current_item !== "undefined")
             this.current_item.answer = undefined;
-        const q = this.item_history.pop();
+        var q = this.item_history.pop();
         if (!q) {
             console.warn("No history to go_back to.");
             return;
         }
         this.counters.revert(q);
         this.current_item = q;
-    }
-    getItemById(id) {
+    };
+    Questionnaire.prototype.getItemById = function (id) {
         var _a;
-        const item = this.items.find((i) => i.id === id);
+        var item = this.items.find(function (i) { return i.id === id; });
         if (!item)
-            throw `[${(_a = this.current_item) === null || _a === void 0 ? void 0 : _a.id}] Cannot find item with id ${id}`;
+            throw "[".concat((_a = this.current_item) === null || _a === void 0 ? void 0 : _a.id, "] Cannot find item with id ").concat(id);
         return item;
-    }
-    get data() {
-        return this._data;
-    }
-    set data(value) {
-        this._data = value;
-    }
-}
+    };
+    Object.defineProperty(Questionnaire.prototype, "data", {
+        get: function () {
+            return this._data;
+        },
+        set: function (value) {
+            this._data = value;
+        },
+        enumerable: false,
+        configurable: true
+    });
+    return Questionnaire;
+}());
 exports.Questionnaire = Questionnaire;
-class Counter {
-    constructor(name, initial_value = 0) {
+var Counter = /** @class */ (function () {
+    function Counter(name, initial_value) {
+        if (initial_value === void 0) { initial_value = 0; }
         this._operations = [];
         if (!name.length)
             throw "A Counter must have a name";
         this._name = name;
         this._initial_value = initial_value;
     }
-    set name(s) {
-        this._name = s;
-    }
-    get name() {
-        return this._name;
-    }
+    Object.defineProperty(Counter.prototype, "name", {
+        get: function () {
+            return this._name;
+        },
+        set: function (s) {
+            this._name = s;
+        },
+        enumerable: false,
+        configurable: true
+    });
     /**
      * Register an Item's setting of the counter value
      */
-    set_value(new_value, source) {
+    Counter.prototype.set_value = function (new_value, source) {
         this._operations.push({
             owner: source,
-            operation: () => new_value,
+            operation: function () { return new_value; },
         });
-    }
-    get value() {
-        let value = this._initial_value;
-        this._operations.forEach((o) => (value = o.operation(value)));
-        return value;
-    }
+    };
+    Object.defineProperty(Counter.prototype, "value", {
+        get: function () {
+            var value = this._initial_value;
+            this._operations.forEach(function (o) { return (value = o.operation(value)); });
+            return value;
+        },
+        enumerable: false,
+        configurable: true
+    });
     /**
      * Register an Item's incrementing of the counter value
      */
-    increment_value(increment, source) {
+    Counter.prototype.increment_value = function (increment, source) {
         this._operations.push({
             owner: source,
-            operation: (x) => x + increment,
+            operation: function (x) { return x + increment; },
         });
-    }
+    };
     /**
      * Remove all operations associated with an Item
      */
-    revert(source) {
-        this._operations = this._operations.filter((o) => o.owner !== source);
-    }
-}
+    Counter.prototype.revert = function (source) {
+        this._operations = this._operations.filter(function (o) { return o.owner !== source; });
+    };
+    return Counter;
+}());
 exports.Counter = Counter;
-class CounterSet {
-    constructor(state) {
+var CounterSet = /** @class */ (function () {
+    function CounterSet(state) {
         this.counters = [];
         this._state = state;
     }
-    _find_counter(name) {
-        const counter = this.counters.find((c) => c.name === name);
+    CounterSet.prototype._find_counter = function (name) {
+        var counter = this.counters.find(function (c) { return c.name === name; });
         if (!counter)
-            throw `No counter found named ${name}`;
+            throw "No counter found named ".concat(name);
         return counter;
-    }
-    _create_counter(name, initial_value) {
-        const counter = new Counter(name, initial_value);
+    };
+    CounterSet.prototype._create_counter = function (name, initial_value) {
+        var counter = new Counter(name, initial_value);
         this.counters.push(counter);
         return counter;
-    }
+    };
     /**
      * Return the value of a counter, or default_value if the counter
      * does not exist yet. If default_value is null and the counter
      * does not yet exist, throw an error.
      */
-    get(name, default_value = null) {
+    CounterSet.prototype.get = function (name, default_value) {
+        if (default_value === void 0) { default_value = null; }
         try {
             return this._find_counter(name).value;
         }
@@ -132,18 +159,18 @@ class CounterSet {
                 return default_value;
             throw e;
         }
-    }
+    };
     /**
      * Register Item setting Counter to Value
      */
-    set(name, value, source) {
+    CounterSet.prototype.set = function (name, value, source) {
         if (!source) {
             if (this._state.current_item)
                 source = this._state.current_item;
             else
                 throw "Cannot determine counter operation source";
         }
-        let counter;
+        var counter;
         try {
             counter = this._find_counter(name);
         }
@@ -151,18 +178,19 @@ class CounterSet {
             counter = this._create_counter(name, value);
         }
         counter.set_value(value, source);
-    }
+    };
     /**
      * Register Item incrementing Counter by Value
      */
-    increment(name, value = 1, source) {
+    CounterSet.prototype.increment = function (name, value, source) {
+        if (value === void 0) { value = 1; }
         if (!source) {
             if (this._state.current_item)
                 source = this._state.current_item;
             else
                 throw "Cannot determine counter operation source";
         }
-        let counter;
+        var counter;
         try {
             counter = this._find_counter(name);
             counter.increment_value(value, source);
@@ -170,17 +198,18 @@ class CounterSet {
         catch (e) {
             counter = this._create_counter(name, value);
         }
-    }
+    };
     /**
      * Remove all Item's actions for all counters
      */
-    revert(source) {
-        this.counters.forEach((c) => c.revert(source));
-    }
-}
+    CounterSet.prototype.revert = function (source) {
+        this.counters.forEach(function (c) { return c.revert(source); });
+    };
+    return CounterSet;
+}());
 exports.CounterSet = CounterSet;
-class Item {
-    constructor(props) {
+var Item = /** @class */ (function () {
+    function Item(props) {
         if (!props.id)
             throw "An Item must have an id";
         this.id = props.id;
@@ -194,7 +223,7 @@ class Item {
         this.handleAnswer = props.process_answer_fun || function () { };
         if (typeof props.next_item === "undefined" &&
             typeof props.next_item_fun === "undefined")
-            throw `No next item property or function declared for item ${props.id}`;
+            throw "No next item property or function declared for item ".concat(props.id);
         if (props.next_item_fun) {
             this.getNextItemId = props.next_item_fun;
             this.conditional_routing = true;
@@ -202,15 +231,15 @@ class Item {
         else {
             if (props.next_item === false) {
                 // End the questionnaire
-                this.getNextItemId = () => null;
+                this.getNextItemId = function () { return null; };
             }
             else {
                 if (props.next_item === null || props.next_item === undefined) {
-                    this.getNextItemId = (ans, state) => {
+                    this.getNextItemId = function (ans, state) {
                         if (!(state.current_item instanceof Item)) {
                             throw "Cannot determine next item from undefined item";
                         }
-                        const i = state.items.indexOf(state.current_item);
+                        var i = state.items.indexOf(state.current_item);
                         if (state.items.length <= i + 1) {
                             return null;
                         }
@@ -219,26 +248,31 @@ class Item {
                 }
                 else {
                     // @ts-ignore because null, undefined, and false are already removed
-                    this.getNextItemId = () => props.next_item;
+                    this.getNextItemId = function () { return props.next_item; };
                 }
             }
             this.conditional_routing = false;
         }
     }
-    get answer() {
-        return this._answer;
-    }
-    set answer(value) {
-        this._answer = value;
-    }
-    next_item(answer, state) {
-        const item_id = this.getNextItemId(answer, state);
+    Object.defineProperty(Item.prototype, "answer", {
+        get: function () {
+            return this._answer;
+        },
+        set: function (value) {
+            this._answer = value;
+        },
+        enumerable: false,
+        configurable: true
+    });
+    Item.prototype.next_item = function (answer, state) {
+        var item_id = this.getNextItemId(answer, state);
         if (item_id === null)
             return undefined;
-        const item = state.items.find((i) => i.id === item_id);
+        var item = state.items.find(function (i) { return i.id === item_id; });
         if (!item)
-            throw `Cannot find next_item with id ${item_id}`;
+            throw "Cannot find next_item with id ".concat(item_id);
         return item;
-    }
-}
+    };
+    return Item;
+}());
 exports.Item = Item;
