@@ -1,0 +1,9 @@
+{
+  "extends": "./tsconfig.app.json",
+  "include": ["test/*.{test,spec}.{ts,mts,cts,tsx}"],
+  "compilerOptions": {
+    "composite": true,
+    "lib": [],
+    "types": ["node"]
+  }
+}

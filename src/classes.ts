@@ -1,14 +1,18 @@
 import type {
   Answer,
+  CounterInterface,
   CounterOperation,
+  CounterSetInterface,
+  ItemInterface,
   ItemProperties,
   NextItemFun,
   ProcessAnswerFun,
+  QuestionnaireInterface,
   QuestionnaireProperties,
 } from "./types";
-import { ItemType } from "./types";
+import {AnswerType, ItemType} from "./types";
 
-export class Questionnaire {
+export class Questionnaire implements QuestionnaireInterface {
   readonly counters: CounterSet;
   readonly items: Item[];
   readonly onComplete: (state: Questionnaire) => void;
@@ -26,7 +30,7 @@ export class Questionnaire {
     this.current_item = this.items[0];
   }
 
-  next_q(ans: Answer | undefined) {
+  next_q(ans: Answer) {
     if (typeof this.current_item === "undefined") {
       throw `Cannot process next_q for undefined current_item [${this.item_history.map(
         (i) => i.id
@@ -40,9 +44,8 @@ export class Questionnaire {
       console.warn(`Question ${this.current_item.id} must have an answer.`);
       return;
     }
-    this.current_item.answer = ans
-      ? { ...ans, utc_time: new Date().toUTCString() }
-      : undefined;
+    this.current_item.answer = ans;
+    this.current_item.answer_utc_time = new Date().toUTCString();
     this.current_item.handleAnswer(ans, this);
     this.item_history.push(this.current_item);
     this.current_item = this.current_item.next_item(ans, this);
@@ -77,7 +80,7 @@ export class Questionnaire {
   }
 }
 
-export class Counter {
+export class Counter implements CounterInterface {
   _name: string;
   _operations: CounterOperation[] = [];
   _initial_value: number;
@@ -130,7 +133,7 @@ export class Counter {
   }
 }
 
-export class CounterSet {
+export class CounterSet implements CounterSetInterface {
   counters: Counter[] = [];
   private readonly _state: Questionnaire;
 
@@ -208,15 +211,16 @@ export class CounterSet {
   }
 }
 
-export class Item {
+export class Item implements ItemInterface {
   readonly id: string;
   readonly question: string;
   readonly answer_options: Answer[];
-  readonly type: ItemType;
   readonly handleAnswer: ProcessAnswerFun;
   readonly getNextItemId: NextItemFun;
   readonly conditional_routing: boolean; // used for heuristic testing
-  private _answer: Answer | undefined;
+  private _answer: Answer;
+
+  answer_utc_time?: string;
 
   constructor(props: ItemProperties) {
     if (!props.id) throw "An Item must have an id";
@@ -224,9 +228,6 @@ export class Item {
     if (!props.question) throw "An Item must have a question";
     this.question = props.question;
     this.answer_options = props.answer_options || [];
-    this.type =
-      props.type ||
-      (this.answer_options.length ? ItemType.RADIO : ItemType.NONE);
     this.handleAnswer = props.process_answer_fun || function () {};
     if (
       typeof props.next_item === "undefined" &&
@@ -243,7 +244,7 @@ export class Item {
       } else {
         if (props.next_item === null || props.next_item === undefined) {
           this.getNextItemId = (
-            ans: Answer | undefined,
+            ans: Answer,
             state: Questionnaire
           ) => {
             if (!(state.current_item instanceof Item)) {
@@ -256,30 +257,68 @@ export class Item {
             return state.items[i + 1].id;
           };
         } else {
-          // @ts-ignore because null, undefined, and false are already removed
-          this.getNextItemId = () => props.next_item;
+          // null, undefined, and false are already removed
+          this.getNextItemId = () => <string>props.next_item;
         }
       }
       this.conditional_routing = false;
     }
   }
 
-  get answer(): Answer | undefined {
+  get answer(): Answer {
     return this._answer;
   }
 
-  set answer(value: Answer | undefined) {
+  set answer(value: Answer) {
     this._answer = value;
   }
 
   next_item(
-    answer: Answer | undefined,
+    ans: Answer,
     state: Questionnaire
   ): Item | undefined {
-    const item_id = this.getNextItemId(answer, state);
+    const item_id = this.getNextItemId(ans, state);
     if (item_id === null) return undefined;
     const item = state.items.find((i) => i.id === item_id);
     if (!item) throw `Cannot find next_item with id ${item_id}`;
     return item;
+  }
+
+  get type(): AnswerType | ItemType {
+    if (!this.answer_options.length) return ItemType.NONE;
+
+    const typesToStr:(a: Answer) => string = (a) => {
+      if (typeof a === "undefined") return "";
+      if ("answer_type" in a) return a.answer_type.toString();
+      return `|${a.map(x => typesToStr(x)).join(',')}`;
+    }
+
+    const types = typesToStr(this.answer_options[0]);
+    for (let i = 1; i < this.answer_options.length; i++) {
+      if (typesToStr(this.answer_options[i]) !== types) return ItemType.COMPLEX;
+    }
+
+    if (!/\d/.test(types)) throw "No types found in type scan of answer_options";
+
+    // Check whether all entries are arrays/objects with same length and type
+    let okay: boolean = true;
+    let value: AnswerType = AnswerType.UNKNOWN;
+    let length: number;
+    types
+      .replace(/^\|/, '')
+      .split('|')
+      .map(x =>
+        x.split(',').map(y => parseInt(y))
+      )
+      .forEach(lst => {
+        if (!okay) return;
+        const s = new Set(lst);
+        if (typeof length === "undefined") length = lst.length;
+        if (value === AnswerType.UNKNOWN) value = lst[0];
+        okay = s.size === 1 && length === lst.length && value === lst[0];
+      })
+
+    if (okay) return value;
+    return ItemType.COMPOSITE;
   }
 }

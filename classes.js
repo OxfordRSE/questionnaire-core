@@ -1,15 +1,4 @@
 "use strict";
-var __assign = (this && this.__assign) || function () {
-    __assign = Object.assign || function(t) {
-        for (var s, i = 1, n = arguments.length; i < n; i++) {
-            s = arguments[i];
-            for (var p in s) if (Object.prototype.hasOwnProperty.call(s, p))
-                t[p] = s[p];
-        }
-        return t;
-    };
-    return __assign.apply(this, arguments);
-};
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.Item = exports.CounterSet = exports.Counter = exports.Questionnaire = void 0;
 var types_1 = require("./types");
@@ -34,8 +23,8 @@ var Questionnaire = /** @class */ (function () {
             console.warn("Question ".concat(this.current_item.id, " must have an answer."));
             return;
         }
-        this.current_item.answer = ans
-            ? __assign(__assign({}, ans), { utc_time: new Date().toUTCString() }) : undefined;
+        this.current_item.answer = ans;
+        this.current_item.answer_utc_time = new Date().toUTCString();
         this.current_item.handleAnswer(ans, this);
         this.item_history.push(this.current_item);
         this.current_item = this.current_item.next_item(ans, this);
@@ -217,9 +206,6 @@ var Item = /** @class */ (function () {
             throw "An Item must have a question";
         this.question = props.question;
         this.answer_options = props.answer_options || [];
-        this.type =
-            props.type ||
-                (this.answer_options.length ? types_1.ItemType.RADIO : types_1.ItemType.NONE);
         this.handleAnswer = props.process_answer_fun || function () { };
         if (typeof props.next_item === "undefined" &&
             typeof props.next_item_fun === "undefined")
@@ -247,7 +233,7 @@ var Item = /** @class */ (function () {
                     };
                 }
                 else {
-                    // @ts-ignore because null, undefined, and false are already removed
+                    // null, undefined, and false are already removed
                     this.getNextItemId = function () { return props.next_item; };
                 }
             }
@@ -264,8 +250,8 @@ var Item = /** @class */ (function () {
         enumerable: false,
         configurable: true
     });
-    Item.prototype.next_item = function (answer, state) {
-        var item_id = this.getNextItemId(answer, state);
+    Item.prototype.next_item = function (ans, state) {
+        var item_id = this.getNextItemId(ans, state);
         if (item_id === null)
             return undefined;
         var item = state.items.find(function (i) { return i.id === item_id; });
@@ -273,6 +259,51 @@ var Item = /** @class */ (function () {
             throw "Cannot find next_item with id ".concat(item_id);
         return item;
     };
+    Object.defineProperty(Item.prototype, "type", {
+        get: function () {
+            if (!this.answer_options.length)
+                return types_1.ItemType.NONE;
+            var typesToStr = function (a) {
+                if (typeof a === "undefined")
+                    return "";
+                if ("answer_type" in a)
+                    return a.answer_type.toString();
+                return "|".concat(a.map(function (x) { return typesToStr(x); }).join(','));
+            };
+            var types = typesToStr(this.answer_options[0]);
+            for (var i = 1; i < this.answer_options.length; i++) {
+                if (typesToStr(this.answer_options[i]) !== types)
+                    return types_1.ItemType.COMPLEX;
+            }
+            if (!/\d/.test(types))
+                throw "No types found in type scan of answer_options";
+            // Check whether all entries are arrays/objects with same length and type
+            var okay = true;
+            var value = types_1.AnswerType.UNKNOWN;
+            var length;
+            types
+                .replace(/^\|/, '')
+                .split('|')
+                .map(function (x) {
+                return x.split(',').map(function (y) { return parseInt(y); });
+            })
+                .forEach(function (lst) {
+                if (!okay)
+                    return;
+                var s = new Set(lst);
+                if (typeof length === "undefined")
+                    length = lst.length;
+                if (value === types_1.AnswerType.UNKNOWN)
+                    value = lst[0];
+                okay = s.size === 1 && length === lst.length && value === lst[0];
+            });
+            if (okay)
+                return value;
+            return types_1.ItemType.COMPOSITE;
+        },
+        enumerable: false,
+        configurable: true
+    });
     return Item;
 }());
 exports.Item = Item;

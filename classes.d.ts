@@ -1,6 +1,6 @@
-import type { Answer, CounterOperation, ItemProperties, NextItemFun, ProcessAnswerFun, QuestionnaireProperties } from "./types";
-import { ItemType } from "./types";
-export declare class Questionnaire {
+import type { Answer, CounterInterface, CounterOperation, CounterSetInterface, ItemInterface, ItemProperties, NextItemFun, ProcessAnswerFun, QuestionnaireInterface, QuestionnaireProperties } from "./types";
+import { AnswerType, ItemType } from "./types";
+export declare class Questionnaire implements QuestionnaireInterface {
     readonly counters: CounterSet;
     readonly items: Item[];
     readonly onComplete: (state: Questionnaire) => void;
@@ -8,13 +8,13 @@ export declare class Questionnaire {
     current_item: Item | undefined;
     item_history: Item[];
     constructor(props: QuestionnaireProperties);
-    next_q(ans: Answer | undefined): void;
+    next_q(ans: Answer): void;
     last_q(): void;
     getItemById(id: string): Item;
     get data(): any;
     set data(value: any);
 }
-export declare class Counter {
+export declare class Counter implements CounterInterface {
     _name: string;
     _operations: CounterOperation[];
     _initial_value: number;
@@ -35,7 +35,7 @@ export declare class Counter {
      */
     revert(source: Item): void;
 }
-export declare class CounterSet {
+export declare class CounterSet implements CounterSetInterface {
     counters: Counter[];
     private readonly _state;
     constructor(state: Questionnaire);
@@ -60,17 +60,18 @@ export declare class CounterSet {
      */
     revert(source: Item): void;
 }
-export declare class Item {
+export declare class Item implements ItemInterface {
     readonly id: string;
     readonly question: string;
     readonly answer_options: Answer[];
-    readonly type: ItemType;
     readonly handleAnswer: ProcessAnswerFun;
     readonly getNextItemId: NextItemFun;
     readonly conditional_routing: boolean;
     private _answer;
+    answer_utc_time?: string;
     constructor(props: ItemProperties);
-    get answer(): Answer | undefined;
-    set answer(value: Answer | undefined);
-    next_item(answer: Answer | undefined, state: Questionnaire): Item | undefined;
+    get answer(): Answer;
+    set answer(value: Answer);
+    next_item(ans: Answer, state: Questionnaire): Item | undefined;
+    get type(): AnswerType | ItemType;
 }
