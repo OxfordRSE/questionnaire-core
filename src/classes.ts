@@ -1,16 +1,19 @@
 import type {
-  Answer,
+  AnswerInterface,
+  AnswerLike,
+  AnswerProperties,
   CounterInterface,
   CounterOperation,
   CounterSetInterface,
   ItemInterface,
+  ItemLike,
   ItemProperties,
-  NextItemFun,
+  NextItemFun, OptionInterface, OptionLike, OptionProperties,
   ProcessAnswerFun,
   QuestionnaireInterface,
   QuestionnaireProperties,
 } from "./types";
-import {AnswerType, ItemType} from "./types";
+import {AnswerType, ContentChangeSource} from "./types";
 
 export class Questionnaire implements QuestionnaireInterface {
   readonly counters: CounterSet;
@@ -22,7 +25,7 @@ export class Questionnaire implements QuestionnaireInterface {
   item_history: Item[] = [];
 
   constructor(props: QuestionnaireProperties) {
-    this.items = props.items;
+    this.items = as_items(props.items);
     this.onComplete = props.onComplete;
     this.counters = new CounterSet(this);
 
@@ -30,31 +33,36 @@ export class Questionnaire implements QuestionnaireInterface {
     this.current_item = this.items[0];
   }
 
-  next_q(ans: Answer) {
+  next_q() {
     if (typeof this.current_item === "undefined") {
       throw `Cannot process next_q for undefined current_item [${this.item_history.map(
         (i) => i.id
       )}]`;
     }
     // Process answer
-    if (
-      typeof ans === "undefined" &&
-      this.current_item.type !== ItemType.NONE
-    ) {
-      console.warn(`Question ${this.current_item.id} must have an answer.`);
+    this.current_item.handleAnswer(this.current_item.last_changed_answer, this.current_item, this);
+    this.item_history.push(this.current_item);
+
+    const fails = this.current_item.find_issues(this);
+
+    if (fails) {
+      console.warn(
+        "Cannot proceed for the following reasons:",
+        ...fails
+      );
       return;
     }
-    this.current_item.answer = ans;
-    this.current_item.answer_utc_time = new Date().toUTCString();
-    this.current_item.handleAnswer(ans, this);
-    this.item_history.push(this.current_item);
-    this.current_item = this.current_item.next_item(ans, this);
+    this.current_item = this.current_item.next_item(
+      this.current_item.last_changed_answer?.content,
+      this.current_item,
+      this
+    );
     if (!this.current_item) this.onComplete(this);
   }
 
   last_q() {
     if (typeof this.current_item !== "undefined")
-      this.current_item.answer = undefined;
+      this.current_item.answers.forEach(a => a.reset_content());
     const q = this.item_history.pop();
     if (!q) {
       console.warn("No history to go_back to.");
@@ -75,20 +83,20 @@ export class Questionnaire implements QuestionnaireInterface {
     return this._data;
   }
 
-  set data(value: any) {
-    this._data = value;
+  set data(content: any) {
+    this._data = content;
   }
 }
 
 export class Counter implements CounterInterface {
   _name: string;
   _operations: CounterOperation[] = [];
-  _initial_value: number;
+  _initial_content: number;
 
-  constructor(name: string, initial_value: number = 0) {
+  constructor(name: string, initial_content: number = 0) {
     if (!name.length) throw "A Counter must have a name";
     this._name = name;
-    this._initial_value = initial_value;
+    this._initial_content = initial_content;
   }
 
   set name(s: string) {
@@ -100,25 +108,25 @@ export class Counter implements CounterInterface {
   }
 
   /**
-   * Register an Item's setting of the counter value
+   * Register an Item's setting of the counter content
    */
-  set_value(new_value: number, source: Item) {
+  set_content(new_content: number, source: Item) {
     this._operations.push({
       owner: source,
-      operation: () => new_value,
+      operation: () => new_content,
     });
   }
 
-  get value(): number {
-    let value: number = this._initial_value;
-    this._operations.forEach((o) => (value = o.operation(value)));
-    return value;
+  get content(): number {
+    let content: number = this._initial_content;
+    this._operations.forEach((o) => (content = o.operation(content)));
+    return content;
   }
 
   /**
-   * Register an Item's incrementing of the counter value
+   * Register an Item's incrementing of the counter content
    */
-  increment_value(increment: number, source: Item): void {
+  increment_content(increment: number, source: Item): void {
     this._operations.push({
       owner: source,
       operation: (x) => x + increment,
@@ -149,30 +157,30 @@ export class CounterSet implements CounterSetInterface {
     return counter;
   }
 
-  _create_counter(name: string, initial_value: number): Counter {
-    const counter: Counter = new Counter(name, initial_value);
+  _create_counter(name: string, initial_content: number): Counter {
+    const counter: Counter = new Counter(name, initial_content);
     this.counters.push(counter);
     return counter;
   }
 
   /**
-   * Return the value of a counter, or default_value if the counter
-   * does not exist yet. If default_value is null and the counter
+   * Return the content of a counter, or default_content if the counter
+   * does not exist yet. If default_content is null and the counter
    * does not yet exist, throw an error.
    */
-  get(name: string, default_value: number | null = null): number {
+  get(name: string, default_content: number | null = null): number {
     try {
-      return this._find_counter(name).value;
+      return this._find_counter(name).content;
     } catch (e: any) {
-      if (default_value !== null) return default_value;
+      if (default_content !== null) return default_content;
       throw e;
     }
   }
 
   /**
-   * Register Item setting Counter to Value
+   * Register Item setting Counter to content
    */
-  set(name: string, value: number, source?: Item) {
+  set(name: string, content: number, source?: Item) {
     if (!source) {
       if (this._state.current_item) source = this._state.current_item;
       else throw "Cannot determine counter operation source";
@@ -181,15 +189,15 @@ export class CounterSet implements CounterSetInterface {
     try {
       counter = this._find_counter(name);
     } catch (e) {
-      counter = this._create_counter(name, value);
+      counter = this._create_counter(name, content);
     }
-    counter.set_value(value, source);
+    counter.set_content(content, source);
   }
 
   /**
-   * Register Item incrementing Counter by Value
+   * Register Item incrementing Counter by content
    */
-  increment(name: string, value: number = 1, source?: Item): void {
+  increment(name: string, content: number = 1, source?: Item): void {
     if (!source) {
       if (this._state.current_item) source = this._state.current_item;
       else throw "Cannot determine counter operation source";
@@ -197,9 +205,9 @@ export class CounterSet implements CounterSetInterface {
     let counter: Counter;
     try {
       counter = this._find_counter(name);
-      counter.increment_value(value, source);
+      counter.increment_content(content, source);
     } catch (e) {
-      counter = this._create_counter(name, value);
+      counter = this._create_counter(name, content);
     }
   }
 
@@ -214,12 +222,11 @@ export class CounterSet implements CounterSetInterface {
 export class Item implements ItemInterface {
   readonly id: string;
   readonly question: string;
-  readonly answer_options: Answer[];
   readonly handleAnswer: ProcessAnswerFun;
   readonly getNextItemId: NextItemFun;
   readonly conditional_routing: boolean; // used for heuristic testing
-  private _answer: Answer;
 
+  answers: Answer[];
   answer_utc_time?: string;
 
   constructor(props: ItemProperties) {
@@ -227,7 +234,6 @@ export class Item implements ItemInterface {
     this.id = props.id;
     if (!props.question) throw "An Item must have a question";
     this.question = props.question;
-    this.answer_options = props.answer_options || [];
     this.handleAnswer = props.process_answer_fun || function () {};
     if (
       typeof props.next_item === "undefined" &&
@@ -244,13 +250,14 @@ export class Item implements ItemInterface {
       } else {
         if (props.next_item === null || props.next_item === undefined) {
           this.getNextItemId = (
-            ans: Answer,
+            last_answer_content: any,
+            current_item: Item,
             state: Questionnaire
           ) => {
-            if (!(state.current_item instanceof Item)) {
+            if (!(current_item instanceof Item)) {
               throw "Cannot determine next item from undefined item";
             }
-            const i = state.items.indexOf(state.current_item);
+            const i = state.items.indexOf(current_item);
             if (state.items.length <= i + 1) {
               return null;
             }
@@ -263,62 +270,182 @@ export class Item implements ItemInterface {
       }
       this.conditional_routing = false;
     }
-  }
-
-  get answer(): Answer {
-    return this._answer;
-  }
-
-  set answer(value: Answer) {
-    this._answer = value;
+    const answers = props.answers? as_answers(props.answers, this.id) : [];
+    this.answers = answers instanceof Array? answers : [answers];
   }
 
   next_item(
-    ans: Answer,
+    last_changed_answer: Answer | undefined,
+    current_item: Item,
     state: Questionnaire
-  ): Item | undefined {
-    const item_id = this.getNextItemId(ans, state);
+  ): (Item | undefined) {
+    const item_id = this.getNextItemId(last_changed_answer, current_item, state);
     if (item_id === null) return undefined;
     const item = state.items.find((i) => i.id === item_id);
     if (!item) throw `Cannot find next_item with id ${item_id}`;
     return item;
   }
 
-  get type(): AnswerType | ItemType {
-    if (!this.answer_options.length) return ItemType.NONE;
-
-    const typesToStr:(a: Answer) => string = (a) => {
-      if (typeof a === "undefined") return "";
-      if ("answer_type" in a) return a.answer_type.toString();
-      return `|${a.map(x => typesToStr(x)).join(',')}`;
-    }
-
-    const types = typesToStr(this.answer_options[0]);
-    for (let i = 1; i < this.answer_options.length; i++) {
-      if (typesToStr(this.answer_options[i]) !== types) return ItemType.COMPLEX;
-    }
-
-    if (!/\d/.test(types)) throw "No types found in type scan of answer_options";
-
-    // Check whether all entries are arrays/objects with same length and type
-    let okay: boolean = true;
-    let value: AnswerType = AnswerType.UNKNOWN;
-    let length: number;
-    types
-      .replace(/^\|/, '')
-      .split('|')
-      .map(x =>
-        x.split(',').map(y => parseInt(y))
-      )
-      .forEach(lst => {
-        if (!okay) return;
-        const s = new Set(lst);
-        if (typeof length === "undefined") length = lst.length;
-        if (value === AnswerType.UNKNOWN) value = lst[0];
-        okay = s.size === 1 && length === lst.length && value === lst[0];
-      })
-
-    if (okay) return value;
-    return ItemType.COMPOSITE;
+  get answer(): Answer {
+    if (this.answers.length !== 1)
+      throw `Property 'answer' can only be used where answers.length === 1`;
+    return this.answers[0];
   }
+  get last_changed_answer(): Answer | undefined {
+    let first = null;
+    let date = new Date(0);
+    this.answers.forEach(a => {
+      if (a.last_answer_utc_time && new Date(a.last_answer_utc_time) > date) {
+        first = a;
+        date = new Date(a.last_answer_utc_time);
+      }
+    });
+    if (first) return first;
+    return undefined;
+  };
+
+  find_issues: (state: Questionnaire) => (string[] | false) =
+    state => {
+      const fails = <string[]>this.answers
+        .map(a => a.find_issues(this, state))
+        .filter(s => typeof s === "string")
+      return fails.length? fails : false;
+    }
 }
+
+export class Answer implements AnswerInterface {
+  readonly id: string;
+  type: AnswerType;
+  default_content: any;
+  content_history: { utc_time: string; content: any, source: ContentChangeSource }[] = [];
+  [key: string]: any;
+
+  constructor(props: AnswerProperties, id: string) {
+    for (const k in props) {
+      if (!(k in ["content"]))
+        this[k] = props[k];
+    }
+    if (!(typeof id === "string") || id === "") throw "An Answer must have an id";
+    this.id = id;
+    if (!props.type) throw "An Answer must specify a type"
+    this.type = props.type;
+    this._content = props.content || props.starting_content || undefined;
+
+    if (props.extra_answers) {
+      this.extra_answers = as_answers(props.extra_answers, this.id);
+    }
+
+    if (props.options) {
+      this.options = as_options(props.options, this.id);
+    }
+
+    if(typeof props.default_content === "undefined")
+      this.default_content = undefined;
+    if(typeof props.check_answer_fun === "undefined")
+      this.check_answer_fun = () => false;
+  }
+
+  get raw_content(): any {
+    if (this.content_changed)
+      return this.content_history[this.content_history.length - 1].content;
+    return undefined;
+  }
+
+  get content(): any {
+    if (!this.content_changed)
+      return this.default_content;
+    return this.content_history[this.content_history.length - 1].content;
+  }
+  set content(v) {
+    this.content_history.push({
+      utc_time: new Date().toUTCString(),
+      content: v,
+      source: ContentChangeSource.User
+    })
+  }
+
+  reset_content() {
+    this.content_history.push({
+      utc_time: new Date().toUTCString(),
+      content: this.default_content,
+      source: ContentChangeSource.Reset
+    })
+  }
+
+  get content_changed(): boolean {
+    return this.content_history.length > 0
+  }
+
+  find_issues: (current_item: Item, state: Questionnaire) => string | false =
+    (current_item, state) =>
+      this.check_answer_fun(this, current_item, state);
+
+  get last_answer_utc_time(): string | undefined {
+    if (this.content_history.length)
+      return this.content_history[this.content_history.length - 1].utc_time;
+    return undefined;
+  };
+}
+
+export class Option implements OptionInterface {
+  readonly id: string;
+  content: string | number | boolean;
+  [key: string]: any;
+
+  constructor(props: OptionProperties, id: string) {
+    for (const k in props) {
+      if (!(k in ["content"]))
+        this[k] = props[k];
+    }
+
+    if (!(typeof id === "string") || id === "") throw "An Option must have an id";
+    this.id = id;
+
+    if (typeof props.content === "undefined") {
+      if (typeof props.label !== "undefined")
+        this.content = props.label;
+      else
+        throw `Cannot make unlabelled Option without specifying content.`
+    } else this.content = props.content;
+    if (props.extra_answers) {
+      this.extra_answers = as_answers(props.extra_answers, this.id);
+    }
+  }
+
+}
+
+/**
+ * Props should be Answer, AnswerProperties, or arrays with those contents.
+ */
+export const as_answers:
+  (props: AnswerLike | AnswerLike[], parent_id: string) => Answer[] | [] =
+  (props, parent_id) => {
+    if (props instanceof Array) {
+      return props.map((p, i) => p instanceof Answer? p : new Answer(p, `${parent_id}_a${i}`));
+    } else
+      return [props instanceof Answer? props : new Answer(<AnswerProperties>props, `${parent_id}_a0`)];
+  }
+
+/**
+ * Props should be Option, OptionProperties, or arrays with those contents.
+ */
+export const as_options:
+  (props: OptionLike | OptionLike[], parent_id: string) => Option[] | [] =
+  (props, parent_id) => {
+    if (props instanceof Array) {
+      return props.map((p, i) => p instanceof Option? p : new Option(p, `${parent_id}_o${i}`));
+    } else
+      return [props instanceof Option? props : new Option(<OptionProperties>props, `${parent_id}_o0`)];
+  }
+
+/**
+ * Props should be Item, ItemProperties, or arrays with those contents.
+ */
+export const as_items:
+  (props: ItemLike | ItemLike[]) => Item[] | [] =
+  (props) => {
+    if (props instanceof Array) {
+      return props.map(p => p instanceof Item? p : new Item(p));
+    } else
+      return [props instanceof Item? props : new Item(<ItemProperties>props)];
+  }

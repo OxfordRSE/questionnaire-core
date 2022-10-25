@@ -1,5 +1,5 @@
 import type { Item, Questionnaire } from "./classes";
-import {Counter, CounterSet} from "./classes";
+import {Answer, Counter, CounterSet, Option} from "./classes";
 
 /**
  * AnswerType controls how frontends render answers
@@ -15,92 +15,78 @@ export enum AnswerType {
 }
 
 /**
- * ItemType can hint to the frontend that AnswerType is not readily accessible.
- * The values should not clash with those of AnswerType, hence they are negative.
- *
- * NONE = Item does not need an answer
- * COMPOSITE = Item's answers have multiple AnswerTypes
- * COMPLEX = Item has multiple answers with different AnswerTypes
+ * If an Answer is to be required, this should be reflected by checking
+ * for an appropriate content in check_answer_fun()
+ * check_answer_fun should return a string describing the issue if it does not return false
  */
-export enum ItemType {
-  NONE = -1,
-  COMPOSITE = -2,
-  COMPLEX = -3
+export type AnswerProperties = {
+  type: AnswerType,
+  default_content?: any,
+  check_answer_fun?: (self: Answer, current_item: Item, state: Questionnaire) => string | false,
+  label?: string,
+  extra_answers?: AnswerLike | AnswerLike[],
+  options?: OptionLike[],
+  [key: string]: any;
+}
+
+export enum ContentChangeSource {
+  Reset,
+  User
 }
 
 /**
- * BaseAnswer describes the shape of an answer and can hold its actual values.
+ * raw_content represents content without default wrapping
+ * content is used for content with default wrapping
+ */
+export interface AnswerInterface {
+  readonly id: string;
+  type: AnswerType;
+  default_content: any;
+  raw_content: any;
+  content: any;
+  reset_content: () => void;
+  content_changed: boolean;
+  last_answer_utc_time: string | undefined;
+  content_history: {utc_time: string, content: any, source: ContentChangeSource}[];
+  find_issues: (current_item: Item, state: Questionnaire) => string | false;
+  label?: string;
+  extra_answers?: Answer[];
+  options?: Option[];
+  [key: string]: any;
+}
+
+/**
+ * Describes answer options for select, radio, checkbox, etc.
  *
  * 'extra' field can be used for representing 'other' type answers, e.g.
- * const ans: NumericAnswer = {
+ * const opts: OptionDetails = {
  *   label: "other",
- *   value: 8,
- *   extra: {value: "The question didn't really make sense to me."}
+ *   content: 8
+ *   extra: {type: AnswerType.TEXT}
  * }
  */
-export interface BaseAnswer {
-  value?: any,
-  answer_type: AnswerType,
-  default_value?: any,
-  label?: string,
-  extra?: BaseAnswer | BaseAnswer[]
-}
-
-export interface NumericAnswer extends BaseAnswer {
-  value: number
-}
-
-export interface TextAnswer extends BaseAnswer {
-  value: string
-}
-
-export interface CompositeAnswer {
-  value: BaseAnswer[]
+export type OptionProperties = {
+  content?: string | number | boolean,
+  label: string;
+  extra_answers?: AnswerLike[];
+  [key: string]: any;
+} | {
+  content: string | number | boolean,
+  label?: string;
+  extra_answers?: AnswerLike[];
+  [key: string]: any;
 }
 
 /**
- * A question may or may not have one or more BaseAnswers supplied.
+ * content inherits from label if content is blank and label is specified
  */
-export type Answer = BaseAnswer | BaseAnswer[] | undefined;
-
-/**
- * Questionnaires consist of a list of items and a callback to
- * execute when the items have been completed.
- */
-export type QuestionnaireProperties = {
-  items: Item[];
-  onComplete: (state: Questionnaire) => void;
-};
-
-/**
- * Counters track the operations made to them by Items.
- * This allows the counters' state to be restored if an Item's answer is undone.
- */
-export type CounterOperation = {
-  owner: Item;
-  operation: (current_value: number) => number;
-};
-
-/**
- * Update counters as a consequence of an Answer.
- */
-export type ProcessAnswerFun = (
-  answer: Answer,
-  state: Questionnaire
-) => void;
-
-/**
- * Determine the next item to go to.
- * Occurs after counters have been updated.
- *  NextItemFun returns one of:
- *  - string id of item to go to
- *    - if this Item doesn't exist, an error will be thrown
- *  - null to end questionnaire
- */
-export type NextItemFun = (
-  answer: Answer,
-  state: Questionnaire
-) => string | null;
+export interface OptionInterface {
+  id: string;
+  content: string | number | boolean;
+  label?: string;
+  extra_answers?: Answer[];
+  [key: string]: any;
+}
 
 /**
  * An Item consists of a unique id, question text, zero or more answer templates,
@@ -115,11 +101,80 @@ export type NextItemFun = (
 export type ItemProperties = {
   id: string;
   question: string;
-  answer_options?: Answer[];
+  answers?: AnswerLike[];
   process_answer_fun?: ProcessAnswerFun;
   next_item?: string | null | false;
   next_item_fun?: NextItemFun;
 };
+
+/**
+ * Items are usually interacted with only via the Questionnaire that owns them.
+ *
+ * answer is a helper to easily access a single Answer.
+ * Accessing it where there answers has length !== 1 will result in an error.
+ *
+ * last_changed_answer contains the last answer to have been changed.
+ */
+export interface ItemInterface {
+  readonly id: string;
+  readonly question: string;
+  readonly handleAnswer: ProcessAnswerFun;
+  readonly getNextItemId: NextItemFun;
+  readonly conditional_routing: boolean; // used for heuristic testing
+
+  answers: Answer[];
+  answer: Answer;
+  last_changed_answer: Answer | undefined;
+  answer_utc_time?: string;
+
+  find_issues: (state: Questionnaire) => (string[] | false);
+
+  next_item: (last_answer_content: any, current_item: Item, state: Questionnaire) => Item | undefined;
+}
+
+/**
+ * Questionnaires consist of a list of items and a callback to
+ * execute when the items have been completed.
+ */
+export type QuestionnaireProperties = {
+  items: (Item | ItemProperties)[];
+  onComplete: (state: Questionnaire) => void;
+};
+
+/**
+ * Counters track the operations made to them by Items.
+ * This allows the counters' state to be restored if an Item's answer is undone.
+ */
+export type CounterOperation = {
+  owner: Item;
+  operation: (current_content: number) => number;
+};
+
+/**
+ * Update counters as a consequence of an Answer.
+ */
+export type ProcessAnswerFun = (
+  last_changed_answer: Answer | undefined,
+  current_item: Item,
+  state: Questionnaire
+) => void;
+
+/**
+ * Determine the next item to go to.
+ * Occurs after counters have been updated.
+ *
+ * last_answer_content is the content of the last answer modified for this item.
+ *
+ *  NextItemFun returns one of:
+ *  - string id of item to go to
+ *    - if this Item doesn't exist, an error will be thrown
+ *  - null to end questionnaire
+ */
+export type NextItemFun = (
+  last_changed_answer: Answer | undefined,
+  current_item: Item,
+  state: Questionnaire
+) => string | null;
 
 /**
  * Questionnaires proceed through their Items by collecting answers and
@@ -137,7 +192,7 @@ export interface QuestionnaireInterface {
   current_item: Item | undefined;
   item_history: Item[] | [];
 
-  next_q: (ans: Answer) => void;  // Advance to the next question
+  next_q: (ans: AnswerLike) => void;  // Advance to the next question
   last_q: () => void;  // Go back, undoing last answer
 
   getItemById: (id: string) => Item;
@@ -147,14 +202,14 @@ export interface QuestionnaireInterface {
 
 /**
  * A Counter is defined by a unique name.
- * Counter values can be altered by an Item,
+ * Counter contents can be altered by an Item,
  * and an Item's alterations to the Counter can be reverted.
  */
 export interface CounterInterface {
   name: string;
-  value: number;
+  content: number;
 
-  increment_value: (amount: number, source: Item) => void;
+  increment_content: (amount: number, source: Item) => void;
   revert: (source: Item) => void;
 }
 
@@ -165,26 +220,15 @@ export interface CounterInterface {
 export interface CounterSetInterface {
   counters: Counter[];
 
-  get: (name: string, default_value: number | null) => number;
-  set: (name: string, value: number, source?: Item) => void;
-  increment: (name: string, value: number, source?: Item) => void;
+  get: (name: string, default_content: number | null) => number;
+  set: (name: string, content: number, source?: Item) => void;
+  increment: (name: string, content: number, source?: Item) => void;
   revert: (source: Item) => void;
 }
 
 /**
- * Items are usually interacted with only via the Questionnaire that owns them.
+ * A question may or may not have one or more Answers supplied.
  */
-export interface ItemInterface {
-  readonly id: string;
-  readonly question: string;
-  readonly answer_options: Answer[];
-  readonly handleAnswer: ProcessAnswerFun;
-  readonly getNextItemId: NextItemFun;
-  readonly conditional_routing: boolean; // used for heuristic testing
-
-  type: AnswerType | ItemType;
-  answer: Answer;
-  answer_utc_time?: string;
-
-  next_item: (ans: Answer, state: Questionnaire) => Item | undefined;
-}
+export type AnswerLike = Answer | AnswerProperties;
+export type OptionLike = Option | OptionProperties;
+export type ItemLike = Item | ItemProperties;

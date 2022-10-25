@@ -1,6 +1,92 @@
-import {AnswerType, Item, Questionnaire} from "../src";
-import {describe, expect, it, vi} from "vitest";
-import {ItemType} from "../src";
+import {Answer, AnswerProperties, AnswerType, as_answers, Item, Option, Questionnaire} from "../src";
+import {describe, expect, it, MockInstance, vi} from "vitest";
+
+describe("Answer interpolation", () => {
+  it("Handles individual answer", () => {
+    const props: AnswerProperties = {
+      type: AnswerType.RADIO,
+      content: 1,
+      label: 'boo'
+    };
+    const ans = new Answer(props, 'test');
+    expect(ans instanceof Answer).to.eq(true);
+    expect(ans.content).to.eq(1);
+    expect(ans.id).to.eq("test");
+  })
+
+  it("Handles array of answers", () => {
+    const props: AnswerProperties[] = [
+      {
+        type: AnswerType.RADIO,
+        content: 1,
+        label: 'boo'
+      },
+      {
+        type: AnswerType.RADIO,
+        content: 1,
+        label: 'boo'
+      },
+    ];
+    const answers: Answer[] = as_answers(props, "test");
+    expect(answers[0] instanceof Answer).to.eq(true);
+    expect(answers[0].id).to.eq("test_a0");
+    expect(answers[1] instanceof Answer).to.eq(true);
+    expect(answers[1].id).to.eq("test_a1");
+  })
+
+  it("Handles nested (extra) answers", () => {
+    const props: AnswerProperties = {
+      type: AnswerType.RADIO,
+      content: 1,
+      label: 'boo',
+      extra_answers: {
+          type: AnswerType.RADIO,
+          content: 1,
+          label: 'hiss'
+        }
+    };
+    const answers: Answer[] = as_answers(props, "test");
+    expect(answers[0] instanceof Answer).to.eq(true);
+    expect(answers[0].extra_answers[0] instanceof Answer).to.eq(true);
+  })
+})
+
+describe("Option interpolation", () => {
+  it("Handles basic option conversion", () => {
+    const props: AnswerProperties = {
+      type: AnswerType.RADIO,
+      content: 1,
+      label: 'boo',
+      options: [
+        { label: 'a' },
+        { label: 'b' }
+      ]
+    };
+    const ans = new Answer(props, 'test');
+    expect(ans.options[0] instanceof Option).to.eq(true);
+    expect(ans.options[1].id).to.eq("test_o1");
+  })
+
+  it("Handles nested option conversion", () => {
+    const props: AnswerProperties = {
+      type: AnswerType.RADIO,
+      content: 1,
+      label: 'boo',
+      options: [
+        { label: 'a' },
+        {
+          label: 'b',
+          extra_answers: [
+            { type: AnswerType.RADIO, options: [ { label: 'a' }]}
+          ]
+        }
+      ]
+    };
+    const ans = new Answer(props, 'test');
+    expect(ans.options[1].extra_answers[0].options[0] instanceof Option).to.eq(true);
+    expect(ans.options[1].extra_answers[0].options[0].id).to.eq("test_o1_a0_o0");
+  })
+})
 
 describe("Basic questionnaire flow", () => {
   it("should set current_item", () => {
@@ -15,10 +101,10 @@ describe("Basic questionnaire flow", () => {
         new Item({
           id: "item_1",
           question: "name",
-          answer_options: [
+          answers: [
             {
-              value: undefined,
-              answer_type: AnswerType.TEXT
+              content: undefined,
+              type: AnswerType.TEXT
             }
           ],
           next_item: "item_3"
@@ -46,94 +132,27 @@ describe("Basic questionnaire flow", () => {
     const end: MockInstance = vi.spyOn(Q, 'onComplete');
     // @ts-ignore
     const nav: MockInstance = vi.spyOn(Q.getItemById("item_3"), 'getNextItemId');
+    // @ts-ignore
+    const check: MockInstance = vi.spyOn(Q.getItemById("item_1").answer, 'find_issues');
 
     expect(Q.current_item?.id).to.eq("item_0");
-    Q.next_q(undefined);
+    Q.next_q();
     expect(Q.current_item?.id).to.eq("item_1");
-    Q.next_q({value: "xx", answer_type: AnswerType.TEXT});
+    Q.current_item.answer.content = "xx";
+    Q.next_q();
+    // @ts-ignore
+    expect(check).toHaveBeenCalled();
     const a = Q.getItemById("item_1").answer;
-    expect("value" in a).to.eq(true);
-    if ("value" in a) expect(a.value).to.eq("xx");
+    expect(a.content).to.eq("xx");
+    expect(Q.getItemById("item_1").last_changed_answer?.content).to.eq("xx");
     expect(Q.current_item?.id).to.eq("item_3");
-    Q.next_q(undefined);
+    Q.next_q();
     // @ts-ignore
     expect(nav).toHaveBeenCalled();
     expect(Q.current_item?.id).to.eq("item_2");
-    Q.next_q(undefined);
+    Q.next_q();
     // @ts-ignore
     expect(end).toHaveBeenCalled();
   })
 })
 
-describe("Item typing", () => {
-  it("should return NONE on empty", () => {
-    const i = new Item({
-      id: "test-item",
-      question: "q",
-      next_item: false,
-      answer_options: []
-    });
-    expect(i.type).to.eq(ItemType.NONE);
-  })
-
-  it("should return AnswerType.* for simple lists", () => {
-    const i = new Item({
-      id: "test-item",
-      question: "q",
-      next_item: false,
-      answer_options: [
-        {value: 0, answer_type: AnswerType.RADIO},
-        {value: 1, answer_type: AnswerType.RADIO},
-        {value: 2, answer_type: AnswerType.RADIO, label: "other", extra: {
-          value: "", answer_type: AnswerType.TEXT
-          }},
-      ]
-    });
-    expect(i.type).to.eq(AnswerType.RADIO);
-  })
-
-  it("should return COMPOSITE for matched lists", () => {
-    const i = new Item({
-      id: "test-item",
-      question: "q",
-      next_item: false,
-      answer_options: [
-        [
-          {value: 0, answer_type: AnswerType.CHECKBOX},
-          {value: "", answer_type: AnswerType.TEXT}
-        ],
-        [
-          {value: 1, answer_type: AnswerType.CHECKBOX},
-          {value: "", answer_type: AnswerType.TEXT}
-        ],
-        [
-          {value: 2, answer_type: AnswerType.CHECKBOX},
-          {value: "", answer_type: AnswerType.TEXT}
-        ]
-      ]
-    });
-    expect(i.type).to.eq(ItemType.COMPOSITE);
-  })
-
-  it("should return COMPLEX for mismatched lists", () => {
-    const i = new Item({
-      id: "test-item",
-      question: "q",
-      next_item: false,
-      answer_options: [
-        [
-          {value: 0, answer_type: AnswerType.CHECKBOX},
-          {value: "", answer_type: AnswerType.TEXT}
-        ],
-        [
-          {value: 1, answer_type: AnswerType.RADIO},
-          {value: "", answer_type: AnswerType.TEXT}
-        ],
-        [
-          {value: "", answer_type: AnswerType.TEXT}
-        ]
-      ]
-    });
-    expect(i.type).to.eq(ItemType.COMPLEX);
-  })
-})

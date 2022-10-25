@@ -1,5 +1,5 @@
-import type { Answer, CounterInterface, CounterOperation, CounterSetInterface, ItemInterface, ItemProperties, NextItemFun, ProcessAnswerFun, QuestionnaireInterface, QuestionnaireProperties } from "./types";
-import { AnswerType, ItemType } from "./types";
+import type { AnswerInterface, AnswerLike, AnswerProperties, CounterInterface, CounterOperation, CounterSetInterface, ItemInterface, ItemLike, ItemProperties, NextItemFun, OptionInterface, OptionLike, OptionProperties, ProcessAnswerFun, QuestionnaireInterface, QuestionnaireProperties } from "./types";
+import { AnswerType, ContentChangeSource } from "./types";
 export declare class Questionnaire implements QuestionnaireInterface {
     readonly counters: CounterSet;
     readonly items: Item[];
@@ -8,28 +8,28 @@ export declare class Questionnaire implements QuestionnaireInterface {
     current_item: Item | undefined;
     item_history: Item[];
     constructor(props: QuestionnaireProperties);
-    next_q(ans: Answer): void;
+    next_q(): void;
     last_q(): void;
     getItemById(id: string): Item;
     get data(): any;
-    set data(value: any);
+    set data(content: any);
 }
 export declare class Counter implements CounterInterface {
     _name: string;
     _operations: CounterOperation[];
-    _initial_value: number;
-    constructor(name: string, initial_value?: number);
+    _initial_content: number;
+    constructor(name: string, initial_content?: number);
     set name(s: string);
     get name(): string;
     /**
-     * Register an Item's setting of the counter value
+     * Register an Item's setting of the counter content
      */
-    set_value(new_value: number, source: Item): void;
-    get value(): number;
+    set_content(new_content: number, source: Item): void;
+    get content(): number;
     /**
-     * Register an Item's incrementing of the counter value
+     * Register an Item's incrementing of the counter content
      */
-    increment_value(increment: number, source: Item): void;
+    increment_content(increment: number, source: Item): void;
     /**
      * Remove all operations associated with an Item
      */
@@ -40,21 +40,21 @@ export declare class CounterSet implements CounterSetInterface {
     private readonly _state;
     constructor(state: Questionnaire);
     _find_counter(name: string): Counter;
-    _create_counter(name: string, initial_value: number): Counter;
+    _create_counter(name: string, initial_content: number): Counter;
     /**
-     * Return the value of a counter, or default_value if the counter
-     * does not exist yet. If default_value is null and the counter
+     * Return the content of a counter, or default_content if the counter
+     * does not exist yet. If default_content is null and the counter
      * does not yet exist, throw an error.
      */
-    get(name: string, default_value?: number | null): number;
+    get(name: string, default_content?: number | null): number;
     /**
-     * Register Item setting Counter to Value
+     * Register Item setting Counter to content
      */
-    set(name: string, value: number, source?: Item): void;
+    set(name: string, content: number, source?: Item): void;
     /**
-     * Register Item incrementing Counter by Value
+     * Register Item incrementing Counter by content
      */
-    increment(name: string, value?: number, source?: Item): void;
+    increment(name: string, content?: number, source?: Item): void;
     /**
      * Remove all Item's actions for all counters
      */
@@ -63,15 +63,51 @@ export declare class CounterSet implements CounterSetInterface {
 export declare class Item implements ItemInterface {
     readonly id: string;
     readonly question: string;
-    readonly answer_options: Answer[];
     readonly handleAnswer: ProcessAnswerFun;
     readonly getNextItemId: NextItemFun;
     readonly conditional_routing: boolean;
-    private _answer;
+    answers: Answer[];
     answer_utc_time?: string;
     constructor(props: ItemProperties);
+    next_item(last_changed_answer: Answer | undefined, current_item: Item, state: Questionnaire): (Item | undefined);
     get answer(): Answer;
-    set answer(value: Answer);
-    next_item(ans: Answer, state: Questionnaire): Item | undefined;
-    get type(): AnswerType | ItemType;
+    get last_changed_answer(): Answer | undefined;
+    find_issues: (state: Questionnaire) => (string[] | false);
 }
+export declare class Answer implements AnswerInterface {
+    readonly id: string;
+    type: AnswerType;
+    default_content: any;
+    content_history: {
+        utc_time: string;
+        content: any;
+        source: ContentChangeSource;
+    }[];
+    [key: string]: any;
+    constructor(props: AnswerProperties, id: string);
+    get raw_content(): any;
+    get content(): any;
+    set content(v: any);
+    reset_content(): void;
+    get content_changed(): boolean;
+    find_issues: (current_item: Item, state: Questionnaire) => string | false;
+    get last_answer_utc_time(): string | undefined;
+}
+export declare class Option implements OptionInterface {
+    readonly id: string;
+    content: string | number | boolean;
+    [key: string]: any;
+    constructor(props: OptionProperties, id: string);
+}
+/**
+ * Props should be Answer, AnswerProperties, or arrays with those contents.
+ */
+export declare const as_answers: (props: AnswerLike | AnswerLike[], parent_id: string) => Answer[] | [];
+/**
+ * Props should be Option, OptionProperties, or arrays with those contents.
+ */
+export declare const as_options: (props: OptionLike | OptionLike[], parent_id: string) => Option[] | [];
+/**
+ * Props should be Item, ItemProperties, or arrays with those contents.
+ */
+export declare const as_items: (props: ItemLike | ItemLike[]) => Item[] | [];

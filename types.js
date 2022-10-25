@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.ItemType = exports.AnswerType = void 0;
+exports.ContentChangeSource = exports.AnswerType = void 0;
 /**
  * AnswerType controls how frontends render answers
  */
@@ -14,17 +14,8 @@ var AnswerType;
     AnswerType[AnswerType["DATE"] = 5] = "DATE";
     AnswerType[AnswerType["TIME"] = 6] = "TIME";
 })(AnswerType = exports.AnswerType || (exports.AnswerType = {}));
-/**
- * ItemType can hint to the frontend that AnswerType is not readily accessible.
- * The values should not clash with those of AnswerType, hence they are negative.
- *
- * NONE = Item does not need an answer
- * COMPOSITE = Item's answers have multiple AnswerTypes
- * COMPLEX = Item has multiple answers with different AnswerTypes
- */
-var ItemType;
-(function (ItemType) {
-    ItemType[ItemType["NONE"] = -1] = "NONE";
-    ItemType[ItemType["COMPOSITE"] = -2] = "COMPOSITE";
-    ItemType[ItemType["COMPLEX"] = -3] = "COMPLEX";
-})(ItemType = exports.ItemType || (exports.ItemType = {}));
+var ContentChangeSource;
+(function (ContentChangeSource) {
+    ContentChangeSource[ContentChangeSource["Reset"] = 0] = "Reset";
+    ContentChangeSource[ContentChangeSource["User"] = 1] = "User";
+})(ContentChangeSource = exports.ContentChangeSource || (exports.ContentChangeSource = {}));
