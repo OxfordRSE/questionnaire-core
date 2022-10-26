@@ -6,10 +6,12 @@ import {Answer, Counter, CounterSet, Option} from "./classes";
  */
 export enum AnswerType {
   UNKNOWN,
-  RADIO,
-  NUMBER,
-  CHECKBOX,
+  NONE,
   TEXT,
+  NUMBER,
+  RADIO,
+  SELECT,
+  CHECKBOX,
   DATE,
   TIME
 }
@@ -20,9 +22,11 @@ export enum AnswerType {
  * check_answer_fun should return a string describing the issue if it does not return false
  */
 export type AnswerProperties = {
+  id?: string;
   type: AnswerType,
   default_content?: any,
-  check_answer_fun?: (self: Answer, current_item: Item, state: Questionnaire) => string | false,
+  check_answer_fun?: (self: Answer, current_item: Item, state: Questionnaire) => string[],
+  to_row_fun?: (self: Answer, include_children?: boolean) => AnswerRow | AnswerRow[];
   label?: string,
   extra_answers?: AnswerLike | AnswerLike[],
   options?: OptionLike[],
@@ -37,9 +41,14 @@ export enum ContentChangeSource {
 /**
  * raw_content represents content without default wrapping
  * content is used for content with default wrapping
+ *
+ * data_id can be used to specify a friendly name for the Answer
+ * when converted to tabular data format
  */
 export interface AnswerInterface {
   readonly id: string;
+  readonly data_id?: string;
+  check_answer_fun: (self: Answer, current_item: Item, state: Questionnaire) => string[],
   type: AnswerType;
   default_content: any;
   raw_content: any;
@@ -48,11 +57,22 @@ export interface AnswerInterface {
   content_changed: boolean;
   last_answer_utc_time: string | undefined;
   content_history: {utc_time: string, content: any, source: ContentChangeSource}[];
-  find_issues: (current_item: Item, state: Questionnaire) => string | false;
+  find_issues: (current_item: Item, state: Questionnaire, include_children?: boolean) => string[];
+  to_row: (include_children?: boolean) => AnswerRow | AnswerRow[];
   label?: string;
-  extra_answers?: Answer[];
+  extra_answers: Answer[];
   options?: Option[];
   [key: string]: any;
+}
+
+export interface AnswerRow {
+  id: string;
+  data_id: string;
+  type: string;
+  content: string | number | boolean | undefined;
+  label: string | undefined;
+  answer_utc_time: string | undefined;
+  [key: string]: string | number | boolean | undefined;
 }
 
 /**
@@ -92,11 +112,10 @@ export interface OptionInterface {
  * An Item consists of a unique id, question text, zero or more answer templates,
  * and functions describing how to act following an answer and which item to go to next.
  *
- * Either next_item or next_item_fun MUST be specified.
  *  next_item can be one of:
  *  - string = go to item with that id
  *  - null = go to the next item in the list, or end if it doesn't exist
- *  - false = end
+ *  - false = end immediately
  */
 export type ItemProperties = {
   id: string;
@@ -130,6 +149,7 @@ export interface ItemInterface {
   find_issues: (state: Questionnaire) => (string[] | false);
 
   next_item: (last_answer_content: any, current_item: Item, state: Questionnaire) => Item | undefined;
+  as_rows: AnswerRow[];
 }
 
 /**
@@ -196,6 +216,7 @@ export interface QuestionnaireInterface {
   last_q: () => void;  // Go back, undoing last answer
 
   getItemById: (id: string) => Item;
+  next_item_in_sequence_id: string | null;
 
   data: any;  // retrieve answer data
 }

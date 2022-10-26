@@ -9,7 +9,7 @@ var __spreadArray = (this && this.__spreadArray) || function (to, from, pack) {
     return to.concat(ar || Array.prototype.slice.call(from));
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.as_items = exports.as_options = exports.as_answers = exports.Option = exports.Answer = exports.Item = exports.CounterSet = exports.Counter = exports.Questionnaire = void 0;
+exports.get_type_name = exports.as_items = exports.as_options = exports.as_answers = exports.Option = exports.Answer = exports.Item = exports.CounterSet = exports.Counter = exports.Questionnaire = void 0;
 var types_1 = require("./types");
 var Questionnaire = /** @class */ (function () {
     function Questionnaire(props) {
@@ -31,7 +31,7 @@ var Questionnaire = /** @class */ (function () {
         this.current_item.handleAnswer(this.current_item.last_changed_answer, this.current_item, this);
         this.item_history.push(this.current_item);
         var fails = this.current_item.find_issues(this);
-        if (fails) {
+        if (fails.length) {
             console.warn.apply(console, __spreadArray(["Cannot proceed for the following reasons:"], fails, false));
             return;
         }
@@ -67,6 +67,21 @@ var Questionnaire = /** @class */ (function () {
         enumerable: false,
         configurable: true
     });
+    Object.defineProperty(Questionnaire.prototype, "next_item_in_sequence_id", {
+        get: function () {
+            if (!(this.current_item instanceof Item)) {
+                throw "Cannot determine next item from undefined item";
+            }
+            var i = this.items.indexOf(this.current_item);
+            if (this.items.length <= i + 1) {
+                return null;
+            }
+            return this.items[i + 1].id;
+        },
+        enumerable: false,
+        configurable: true
+    });
+    ;
     return Questionnaire;
 }());
 exports.Questionnaire = Questionnaire;
@@ -209,10 +224,9 @@ var Item = /** @class */ (function () {
     function Item(props) {
         var _this = this;
         this.find_issues = function (state) {
-            var fails = _this.answers
-                .map(function (a) { return a.find_issues(_this, state); })
-                .filter(function (s) { return typeof s === "string"; });
-            return fails.length ? fails : false;
+            var fails = [];
+            _this.answers.forEach(function (a) { return fails.push.apply(fails, a.find_issues(_this, state)); });
+            return fails;
         };
         if (!props.id)
             throw "An Item must have an id";
@@ -221,9 +235,6 @@ var Item = /** @class */ (function () {
             throw "An Item must have a question";
         this.question = props.question;
         this.handleAnswer = props.process_answer_fun || function () { };
-        if (typeof props.next_item === "undefined" &&
-            typeof props.next_item_fun === "undefined")
-            throw "No next item property or function declared for item ".concat(props.id);
         if (props.next_item_fun) {
             this.getNextItemId = props.next_item_fun;
             this.conditional_routing = true;
@@ -235,16 +246,7 @@ var Item = /** @class */ (function () {
             }
             else {
                 if (props.next_item === null || props.next_item === undefined) {
-                    this.getNextItemId = function (last_answer_content, current_item, state) {
-                        if (!(current_item instanceof Item)) {
-                            throw "Cannot determine next item from undefined item";
-                        }
-                        var i = state.items.indexOf(current_item);
-                        if (state.items.length <= i + 1) {
-                            return null;
-                        }
-                        return state.items[i + 1].id;
-                    };
+                    this.getNextItemId = function (last_answer_content, current_item, state) { return state.next_item_in_sequence_id; };
                 }
                 else {
                     // null, undefined, and false are already removed
@@ -292,6 +294,22 @@ var Item = /** @class */ (function () {
         configurable: true
     });
     ;
+    Object.defineProperty(Item.prototype, "as_rows", {
+        get: function () {
+            var rows = [];
+            this.answers.forEach(function (a) {
+                var r = a.to_row(true);
+                if (r instanceof Array)
+                    rows.push.apply(rows, r);
+                else
+                    rows.push(r);
+            });
+            return rows;
+        },
+        enumerable: false,
+        configurable: true
+    });
+    ;
     return Item;
 }());
 exports.Item = Item;
@@ -299,8 +317,41 @@ var Answer = /** @class */ (function () {
     function Answer(props, id) {
         var _this = this;
         this.content_history = [];
-        this.find_issues = function (current_item, state) {
-            return _this.check_answer_fun(_this, current_item, state);
+        this.find_issues = function (current_item, state, include_children) {
+            if (include_children === void 0) { include_children = true; }
+            var issues = [];
+            issues.push.apply(issues, _this.check_answer_fun(_this, current_item, state));
+            _this.extra_answers.forEach(function (a) { return issues.push.apply(issues, a.find_issues(current_item, state, include_children)); });
+            return issues;
+        };
+        this.to_row = function (include_children) {
+            if (include_children === void 0) { include_children = true; }
+            if (_this.to_row_fun)
+                return _this.to_row_fun(_this, include_children);
+            var out = {
+                id: _this.id,
+                data_id: _this.data_id || _this.id,
+                type: (0, exports.get_type_name)(_this.type),
+                content: undefined,
+                label: undefined,
+                answer_utc_time: undefined,
+            };
+            var rows = [out];
+            if (include_children)
+                _this.extra_answers.forEach(function (a) { return rows.push.apply(rows, a.to_row(include_children)); });
+            if (_this.type in [types_1.AnswerType.UNKNOWN, types_1.AnswerType.NONE])
+                return include_children ? rows : out;
+            if (_this.last_answer_utc_time)
+                out.answer_utc_time = _this.last_answer_utc_time;
+            if (_this.type in [types_1.AnswerType.RADIO, types_1.AnswerType.SELECT]) {
+                var selected = _this.options[_this.content];
+                out.label = selected.label;
+                out.content = selected.content;
+                return include_children ? rows : out;
+            }
+            out.label = _this.label;
+            out.content = _this.content;
+            return include_children ? rows : out;
         };
         for (var k in props) {
             if (!(k in ["content"]))
@@ -309,20 +360,28 @@ var Answer = /** @class */ (function () {
         if (!(typeof id === "string") || id === "")
             throw "An Answer must have an id";
         this.id = id;
-        if (!props.type)
+        if (props.id)
+            this.data_id = props.id;
+        if (typeof props.type === "undefined")
             throw "An Answer must specify a type";
         this.type = props.type;
         this._content = props.content || props.starting_content || undefined;
-        if (props.extra_answers) {
+        if (props.extra_answers)
             this.extra_answers = (0, exports.as_answers)(props.extra_answers, this.id);
-        }
-        if (props.options) {
+        else
+            this.extra_answers = [];
+        if (props.options)
             this.options = (0, exports.as_options)(props.options, this.id);
-        }
-        if (typeof props.default_content === "undefined")
+        if (props.default_content)
+            this.default_content = props.default_content;
+        else
             this.default_content = undefined;
-        if (typeof props.check_answer_fun === "undefined")
-            this.check_answer_fun = function () { return false; };
+        if (props.check_answer_fun)
+            this.check_answer_fun = props.check_answer_fun;
+        else
+            this.check_answer_fun = function () { return []; };
+        if (props.to_row_fun)
+            this.to_row_fun = props.to_row_fun;
     }
     Object.defineProperty(Answer.prototype, "raw_content", {
         get: function () {
@@ -433,3 +492,17 @@ var as_items = function (props) {
         return [props instanceof Item ? props : new Item(props)];
 };
 exports.as_items = as_items;
+var get_type_name = function (t) {
+    switch (t) {
+        case types_1.AnswerType.NONE: return "none";
+        case types_1.AnswerType.TEXT: return "text";
+        case types_1.AnswerType.NUMBER: return "number";
+        case types_1.AnswerType.RADIO: return "radio";
+        case types_1.AnswerType.SELECT: return "select";
+        case types_1.AnswerType.CHECKBOX: return "checkbox";
+        case types_1.AnswerType.DATE: return "date";
+        case types_1.AnswerType.TIME: return "time";
+    }
+    return "unknown";
+};
+exports.get_type_name = get_type_name;

@@ -103,6 +103,7 @@ describe("Basic questionnaire flow", () => {
           question: "name",
           answers: [
             {
+              id: "item_1_answer",
               content: undefined,
               type: AnswerType.TEXT
             }
@@ -153,6 +154,12 @@ describe("Basic questionnaire flow", () => {
     Q.next_q();
     // @ts-ignore
     expect(end).toHaveBeenCalled();
+    const row = Q.items[1].as_rows;
+    expect(row instanceof Array).to.eq(true);
+    expect(row.length).to.eq(1);
+    expect(row[0].id).to.eq('item_1_a0');
+    expect(row[0].data_id).to.eq('item_1_answer');
+    expect(row[0].content).to.eq('xx');
   })
 })
 

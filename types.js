@@ -7,12 +7,14 @@ exports.ContentChangeSource = exports.AnswerType = void 0;
 var AnswerType;
 (function (AnswerType) {
     AnswerType[AnswerType["UNKNOWN"] = 0] = "UNKNOWN";
-    AnswerType[AnswerType["RADIO"] = 1] = "RADIO";
-    AnswerType[AnswerType["NUMBER"] = 2] = "NUMBER";
-    AnswerType[AnswerType["CHECKBOX"] = 3] = "CHECKBOX";
-    AnswerType[AnswerType["TEXT"] = 4] = "TEXT";
-    AnswerType[AnswerType["DATE"] = 5] = "DATE";
-    AnswerType[AnswerType["TIME"] = 6] = "TIME";
+    AnswerType[AnswerType["NONE"] = 1] = "NONE";
+    AnswerType[AnswerType["TEXT"] = 2] = "TEXT";
+    AnswerType[AnswerType["NUMBER"] = 3] = "NUMBER";
+    AnswerType[AnswerType["RADIO"] = 4] = "RADIO";
+    AnswerType[AnswerType["SELECT"] = 5] = "SELECT";
+    AnswerType[AnswerType["CHECKBOX"] = 6] = "CHECKBOX";
+    AnswerType[AnswerType["DATE"] = 7] = "DATE";
+    AnswerType[AnswerType["TIME"] = 8] = "TIME";
 })(AnswerType = exports.AnswerType || (exports.AnswerType = {}));
 var ContentChangeSource;
 (function (ContentChangeSource) {

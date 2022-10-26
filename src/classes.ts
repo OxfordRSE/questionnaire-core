@@ -2,13 +2,17 @@ import type {
   AnswerInterface,
   AnswerLike,
   AnswerProperties,
+  AnswerRow,
   CounterInterface,
   CounterOperation,
   CounterSetInterface,
   ItemInterface,
   ItemLike,
   ItemProperties,
-  NextItemFun, OptionInterface, OptionLike, OptionProperties,
+  NextItemFun,
+  OptionInterface,
+  OptionLike,
+  OptionProperties,
   ProcessAnswerFun,
   QuestionnaireInterface,
   QuestionnaireProperties,
@@ -45,7 +49,7 @@ export class Questionnaire implements QuestionnaireInterface {
 
     const fails = this.current_item.find_issues(this);
 
-    if (fails) {
+    if (fails.length) {
       console.warn(
         "Cannot proceed for the following reasons:",
         ...fails
@@ -86,6 +90,17 @@ export class Questionnaire implements QuestionnaireInterface {
   set data(content: any) {
     this._data = content;
   }
+
+  get next_item_in_sequence_id(): string | null {
+    if (!(this.current_item instanceof Item)) {
+      throw "Cannot determine next item from undefined item";
+    }
+    const i = this.items.indexOf(this.current_item);
+    if (this.items.length <= i + 1) {
+      return null;
+    }
+    return this.items[i + 1].id;
+  };
 }
 
 export class Counter implements CounterInterface {
@@ -235,11 +250,6 @@ export class Item implements ItemInterface {
     if (!props.question) throw "An Item must have a question";
     this.question = props.question;
     this.handleAnswer = props.process_answer_fun || function () {};
-    if (
-      typeof props.next_item === "undefined" &&
-      typeof props.next_item_fun === "undefined"
-    )
-      throw `No next item property or function declared for item ${props.id}`;
     if (props.next_item_fun) {
       this.getNextItemId = props.next_item_fun;
       this.conditional_routing = true;
@@ -253,16 +263,7 @@ export class Item implements ItemInterface {
             last_answer_content: any,
             current_item: Item,
             state: Questionnaire
-          ) => {
-            if (!(current_item instanceof Item)) {
-              throw "Cannot determine next item from undefined item";
-            }
-            const i = state.items.indexOf(current_item);
-            if (state.items.length <= i + 1) {
-              return null;
-            }
-            return state.items[i + 1].id;
-          };
+          ) => state.next_item_in_sequence_id;
         } else {
           // null, undefined, and false are already removed
           this.getNextItemId = () => <string>props.next_item;
@@ -304,20 +305,31 @@ export class Item implements ItemInterface {
     return undefined;
   };
 
-  find_issues: (state: Questionnaire) => (string[] | false) =
+  find_issues: (state: Questionnaire) => string[] =
     state => {
-      const fails = <string[]>this.answers
-        .map(a => a.find_issues(this, state))
-        .filter(s => typeof s === "string")
-      return fails.length? fails : false;
+      const fails: string[] = [];
+      this.answers.forEach(a => fails.push(...a.find_issues(this, state)));
+      return fails;
     }
+  get as_rows(): AnswerRow[] {
+    const rows: AnswerRow[] = [];
+    this.answers.forEach(a => {
+      const r = a.to_row(true);
+      if (r instanceof Array) rows.push(...r)
+      else rows.push(<AnswerRow>r);
+    });
+    return rows;
+  };
 }
 
 export class Answer implements AnswerInterface {
   readonly id: string;
+  readonly data_id?: string;
   type: AnswerType;
   default_content: any;
   content_history: { utc_time: string; content: any, source: ContentChangeSource }[] = [];
+  check_answer_fun: (self: Answer, current_item: Item, state: Questionnaire) => string[];
+  extra_answers: Answer[];
   [key: string]: any;
 
   constructor(props: AnswerProperties, id: string) {
@@ -327,22 +339,30 @@ export class Answer implements AnswerInterface {
     }
     if (!(typeof id === "string") || id === "") throw "An Answer must have an id";
     this.id = id;
-    if (!props.type) throw "An Answer must specify a type"
+
+    if (props.id) this.data_id = props.id;
+
+    if (typeof props.type === "undefined") throw "An Answer must specify a type"
     this.type = props.type;
     this._content = props.content || props.starting_content || undefined;
 
-    if (props.extra_answers) {
+    if (props.extra_answers)
       this.extra_answers = as_answers(props.extra_answers, this.id);
-    }
+    else this.extra_answers = [];
 
-    if (props.options) {
+    if (props.options)
       this.options = as_options(props.options, this.id);
-    }
 
-    if(typeof props.default_content === "undefined")
-      this.default_content = undefined;
-    if(typeof props.check_answer_fun === "undefined")
-      this.check_answer_fun = () => false;
+    if (props.default_content)
+      this.default_content = props.default_content;
+    else this.default_content = undefined;
+
+    if (props.check_answer_fun)
+      this.check_answer_fun = props.check_answer_fun;
+    else this.check_answer_fun = () => [];
+
+    if (props.to_row_fun)
+      this.to_row_fun = props.to_row_fun;
   }
 
   get raw_content(): any {
@@ -376,15 +396,48 @@ export class Answer implements AnswerInterface {
     return this.content_history.length > 0
   }
 
-  find_issues: (current_item: Item, state: Questionnaire) => string | false =
-    (current_item, state) =>
-      this.check_answer_fun(this, current_item, state);
+  find_issues: (current_item: Item, state: Questionnaire, include_children?: boolean) => string[] =
+    (current_item, state, include_children = true) => {
+      const issues = [];
+      issues.push(...this.check_answer_fun(this, current_item, state));
+      this.extra_answers.forEach(a => issues.push(...a.find_issues(current_item, state, include_children)));
+      return issues;
+    }
 
   get last_answer_utc_time(): string | undefined {
     if (this.content_history.length)
       return this.content_history[this.content_history.length - 1].utc_time;
     return undefined;
   };
+
+  to_row: (include_children?: boolean) => AnswerRow | AnswerRow[] =
+    (include_children = true) => {
+      if (this.to_row_fun) return this.to_row_fun(this, include_children);
+      const out: AnswerRow = {
+        id: this.id,
+        data_id: this.data_id || this.id,
+        type: get_type_name(this.type),
+        content: undefined,
+        label: undefined,
+        answer_utc_time: undefined,
+      }
+      const rows = [out];
+      if (include_children)
+        this.extra_answers.forEach(a => rows.push(...<AnswerRow[]>a.to_row(include_children)));
+
+      if (this.type in [AnswerType.UNKNOWN, AnswerType.NONE])
+        return include_children? rows : out;
+      if (this.last_answer_utc_time) out.answer_utc_time = this.last_answer_utc_time;
+      if (this.type in [AnswerType.RADIO, AnswerType.SELECT]) {
+        const selected = this.options[this.content];
+        out.label = selected.label;
+        out.content = selected.content;
+        return include_children? rows : out ;
+      }
+      out.label = this.label;
+      out.content = this.content;
+      return include_children? rows : out;
+    }
 }
 
 export class Option implements OptionInterface {
@@ -449,3 +502,17 @@ export const as_items:
     } else
       return [props instanceof Item? props : new Item(<ItemProperties>props)];
   }
+
+export const get_type_name: (t: AnswerType) => string = (t) => {
+  switch(t) {
+    case AnswerType.NONE: return "none";
+    case AnswerType.TEXT: return "text";
+    case AnswerType.NUMBER: return "number";
+    case AnswerType.RADIO: return "radio";
+    case AnswerType.SELECT: return "select";
+    case AnswerType.CHECKBOX: return "checkbox";
+    case AnswerType.DATE: return "date";
+    case AnswerType.TIME: return "time";
+  }
+  return "unknown";
+}
