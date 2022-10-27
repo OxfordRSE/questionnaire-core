@@ -57,7 +57,7 @@ export class Questionnaire implements QuestionnaireInterface {
       return;
     }
     this.current_item = this.current_item.next_item(
-      this.current_item.last_changed_answer?.content,
+      this.current_item.last_changed_answer,
       this.current_item,
       this
     );
@@ -260,7 +260,7 @@ export class Item implements ItemInterface {
       } else {
         if (props.next_item === null || props.next_item === undefined) {
           this.getNextItemId = (
-            last_answer_content: any,
+            last_changed_answer: Answer | undefined,
             current_item: Item,
             state: Questionnaire
           ) => state.next_item_in_sequence_id;
@@ -293,15 +293,15 @@ export class Item implements ItemInterface {
     return this.answers[0];
   }
   get last_changed_answer(): Answer | undefined {
-    let first = null;
+    let last = null;
     let date = new Date(0);
     this.answers.forEach(a => {
       if (a.last_answer_utc_time && new Date(a.last_answer_utc_time) > date) {
-        first = a;
+        last = a;
         date = new Date(a.last_answer_utc_time);
       }
     });
-    if (first) return first;
+    if (last) return last;
     return undefined;
   };
 
@@ -396,6 +396,15 @@ export class Answer implements AnswerInterface {
     return this.content_history.length > 0
   }
 
+  get selected_option(): Option | undefined {
+    if (this.type !== AnswerType.RADIO)
+      console.warn(`selected_option is always undefined for Answers of type ${get_type_name(this.type)}`);
+    if (typeof this.content !== "undefined") {
+      return this.options[this.content];
+    }
+    return undefined;
+  }
+
   find_issues: (current_item: Item, state: Questionnaire, include_children?: boolean) => string[] =
     (current_item, state, include_children = true) => {
       const issues = [];
@@ -443,6 +452,7 @@ export class Answer implements AnswerInterface {
 export class Option implements OptionInterface {
   readonly id: string;
   content: string | number | boolean;
+  extra_answers: Answer[];
   [key: string]: any;
 
   constructor(props: OptionProperties, id: string) {
@@ -462,9 +472,8 @@ export class Option implements OptionInterface {
     } else this.content = props.content;
     if (props.extra_answers) {
       this.extra_answers = as_answers(props.extra_answers, this.id);
-    }
+    } else this.extra_answers = [];
   }
-
 }
 
 /**

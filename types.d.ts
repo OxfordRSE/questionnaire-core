@@ -12,7 +12,12 @@ export declare enum AnswerType {
     SELECT = 5,
     CHECKBOX = 6,
     DATE = 7,
-    TIME = 8
+    TIME = 8,
+    DATETIME = 9,
+    DATE_RANGE = 10,
+    TIME_RANGE = 11,
+    DATETIME_RANGE = 12,
+    TEXTAREA = 13
 }
 /**
  * If an Answer is to be required, this should be reflected by checking
@@ -49,6 +54,7 @@ export interface AnswerInterface {
     default_content: any;
     raw_content: any;
     content: any;
+    selected_option: Option | undefined;
     reset_content: () => void;
     content_changed: boolean;
     last_answer_utc_time: string | undefined;
@@ -101,7 +107,7 @@ export interface OptionInterface {
     id: string;
     content: string | number | boolean;
     label?: string;
-    extra_answers?: Answer[];
+    extra_answers: Answer[];
     [key: string]: any;
 }
 /**
@@ -140,7 +146,7 @@ export interface ItemInterface {
     last_changed_answer: Answer | undefined;
     answer_utc_time?: string;
     find_issues: (state: Questionnaire) => (string[] | false);
-    next_item: (last_answer_content: any, current_item: Item, state: Questionnaire) => Item | undefined;
+    next_item: (last_changed_answer: Answer | undefined, current_item: Item, state: Questionnaire) => Item | undefined;
     as_rows: AnswerRow[];
 }
 /**
@@ -167,7 +173,7 @@ export declare type ProcessAnswerFun = (last_changed_answer: Answer | undefined,
  * Determine the next item to go to.
  * Occurs after counters have been updated.
  *
- * last_answer_content is the content of the last answer modified for this item.
+ * last_changed_answer is the content of the last answer modified for this item.
  *
  *  NextItemFun returns one of:
  *  - string id of item to go to

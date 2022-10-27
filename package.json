@@ -1,6 +1,6 @@
 {
   "name": "questionnaire-core",
-  "version": "0.2.14",
+  "version": "0.2.17",
   "description": "Questionnaire/Survey structure and behaviour",
   "main": "index.js",
   "scripts": {

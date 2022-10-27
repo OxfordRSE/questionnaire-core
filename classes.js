@@ -23,7 +23,6 @@ var Questionnaire = /** @class */ (function () {
         this.current_item = this.items[0];
     }
     Questionnaire.prototype.next_q = function () {
-        var _a;
         if (typeof this.current_item === "undefined") {
             throw "Cannot process next_q for undefined current_item [".concat(this.item_history.map(function (i) { return i.id; }), "]");
         }
@@ -35,7 +34,7 @@ var Questionnaire = /** @class */ (function () {
             console.warn.apply(console, __spreadArray(["Cannot proceed for the following reasons:"], fails, false));
             return;
         }
-        this.current_item = this.current_item.next_item((_a = this.current_item.last_changed_answer) === null || _a === void 0 ? void 0 : _a.content, this.current_item, this);
+        this.current_item = this.current_item.next_item(this.current_item.last_changed_answer, this.current_item, this);
         if (!this.current_item)
             this.onComplete(this);
     };
@@ -246,7 +245,7 @@ var Item = /** @class */ (function () {
             }
             else {
                 if (props.next_item === null || props.next_item === undefined) {
-                    this.getNextItemId = function (last_answer_content, current_item, state) { return state.next_item_in_sequence_id; };
+                    this.getNextItemId = function (last_changed_answer, current_item, state) { return state.next_item_in_sequence_id; };
                 }
                 else {
                     // null, undefined, and false are already removed
@@ -278,16 +277,16 @@ var Item = /** @class */ (function () {
     });
     Object.defineProperty(Item.prototype, "last_changed_answer", {
         get: function () {
-            var first = null;
+            var last = null;
             var date = new Date(0);
             this.answers.forEach(function (a) {
                 if (a.last_answer_utc_time && new Date(a.last_answer_utc_time) > date) {
-                    first = a;
+                    last = a;
                     date = new Date(a.last_answer_utc_time);
                 }
             });
-            if (first)
-                return first;
+            if (last)
+                return last;
             return undefined;
         },
         enumerable: false,
@@ -422,6 +421,18 @@ var Answer = /** @class */ (function () {
         enumerable: false,
         configurable: true
     });
+    Object.defineProperty(Answer.prototype, "selected_option", {
+        get: function () {
+            if (this.type !== types_1.AnswerType.RADIO)
+                console.warn("selected_option is always undefined for Answers of type ".concat((0, exports.get_type_name)(this.type)));
+            if (typeof this.content !== "undefined") {
+                return this.options[this.content];
+            }
+            return undefined;
+        },
+        enumerable: false,
+        configurable: true
+    });
     Object.defineProperty(Answer.prototype, "last_answer_utc_time", {
         get: function () {
             if (this.content_history.length)
@@ -455,6 +466,8 @@ var Option = /** @class */ (function () {
         if (props.extra_answers) {
             this.extra_answers = (0, exports.as_answers)(props.extra_answers, this.id);
         }
+        else
+            this.extra_answers = [];
     }
     return Option;
 }());

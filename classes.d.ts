@@ -95,6 +95,7 @@ export declare class Answer implements AnswerInterface {
     set content(v: any);
     reset_content(): void;
     get content_changed(): boolean;
+    get selected_option(): Option | undefined;
     find_issues: (current_item: Item, state: Questionnaire, include_children?: boolean) => string[];
     get last_answer_utc_time(): string | undefined;
     to_row: (include_children?: boolean) => AnswerRow | AnswerRow[];
@@ -102,6 +103,7 @@ export declare class Answer implements AnswerInterface {
 export declare class Option implements OptionInterface {
     readonly id: string;
     content: string | number | boolean;
+    extra_answers: Answer[];
     [key: string]: any;
     constructor(props: OptionProperties, id: string);
 }

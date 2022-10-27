@@ -17,12 +17,12 @@ describe("Answer interpolation", () => {
   it("Handles array of answers", () => {
     const props: AnswerProperties[] = [
       {
-        type: AnswerType.RADIO,
+        type: AnswerType.TEXT,
         content: 1,
         label: 'boo'
       },
       {
-        type: AnswerType.RADIO,
+        type: AnswerType.NUMBER,
         content: 1,
         label: 'boo'
       },
@@ -37,10 +37,11 @@ describe("Answer interpolation", () => {
   it("Handles nested (extra) answers", () => {
     const props: AnswerProperties = {
       type: AnswerType.RADIO,
-      content: 1,
+      options: [{content: 0}],
+      content: 0,
       label: 'boo',
       extra_answers: {
-          type: AnswerType.RADIO,
+          type: AnswerType.TEXT,
           content: 1,
           label: 'hiss'
         }

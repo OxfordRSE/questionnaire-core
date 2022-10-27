@@ -15,6 +15,11 @@ var AnswerType;
     AnswerType[AnswerType["CHECKBOX"] = 6] = "CHECKBOX";
     AnswerType[AnswerType["DATE"] = 7] = "DATE";
     AnswerType[AnswerType["TIME"] = 8] = "TIME";
+    AnswerType[AnswerType["DATETIME"] = 9] = "DATETIME";
+    AnswerType[AnswerType["DATE_RANGE"] = 10] = "DATE_RANGE";
+    AnswerType[AnswerType["TIME_RANGE"] = 11] = "TIME_RANGE";
+    AnswerType[AnswerType["DATETIME_RANGE"] = 12] = "DATETIME_RANGE";
+    AnswerType[AnswerType["TEXTAREA"] = 13] = "TEXTAREA";
 })(AnswerType = exports.AnswerType || (exports.AnswerType = {}));
 var ContentChangeSource;
 (function (ContentChangeSource) {
