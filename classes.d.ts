@@ -1,5 +1,5 @@
-import type { AnswerInterface, AnswerLike, AnswerProperties, AnswerRow, CounterInterface, CounterOperation, CounterSetInterface, ItemInterface, ItemLike, ItemProperties, NextItemFun, OptionInterface, OptionLike, OptionProperties, ProcessAnswerFun, QuestionnaireInterface, QuestionnaireProperties } from "./types";
-import { AnswerType, ContentChangeSource } from "./types";
+import type { AnswerInterface, AnswerLike, AnswerProperties, AnswerRow, AnswerValidator, AnswerValidatorFunction, CounterInterface, CounterOperation, CounterSetInterface, ItemInterface, ItemLike, ItemProperties, NextItemFun, OptionInterface, OptionLike, OptionProperties, ProcessAnswerFun, QuestionnaireInterface, QuestionnaireProperties, ValidationIssue } from "./types";
+import { AnswerType, ContentChangeSource, ValidationIssueLevel } from "./types";
 export declare class Questionnaire implements QuestionnaireInterface {
     readonly counters: CounterSet;
     readonly items: Item[];
@@ -7,6 +7,7 @@ export declare class Questionnaire implements QuestionnaireInterface {
     private _data;
     current_item: Item | undefined;
     item_history: Item[];
+    validation_issues: ValidationIssue[];
     constructor(props: QuestionnaireProperties);
     next_q(): void;
     last_q(): void;
@@ -14,6 +15,7 @@ export declare class Questionnaire implements QuestionnaireInterface {
     get data(): any;
     set data(content: any);
     get next_item_in_sequence_id(): string | null;
+    check_validation(): ValidationIssue[];
 }
 export declare class Counter implements CounterInterface {
     _name: string;
@@ -69,13 +71,21 @@ export declare class Item implements ItemInterface {
     readonly conditional_routing: boolean;
     answers: Answer[];
     answer_utc_time?: string;
+    validation_issues: ValidationIssue[];
     constructor(props: ItemProperties);
     next_item(last_changed_answer: Answer | undefined, current_item: Item, state: Questionnaire): (Item | undefined);
     get answer(): Answer;
     get last_changed_answer(): Answer | undefined;
-    find_issues: (state: Questionnaire) => string[];
+    check_validation(state: Questionnaire): ValidationIssue[];
     get as_rows(): AnswerRow[];
 }
+export declare const Validator: (fn: AnswerValidatorFunction, level?: ValidationIssueLevel) => AnswerValidator;
+export declare const Validators: {
+    [name: string]: AnswerValidator;
+};
+export declare const ValidatorsWithProps: {
+    [name: string]: (props: any) => AnswerValidator;
+};
 export declare class Answer implements AnswerInterface {
     readonly id: string;
     readonly data_id?: string;
@@ -86,7 +96,9 @@ export declare class Answer implements AnswerInterface {
         content: any;
         source: ContentChangeSource;
     }[];
-    check_answer_fun: (self: Answer, current_item: Item, state: Questionnaire) => string[];
+    validators: AnswerValidator[];
+    validation_issues: ValidationIssue[];
+    own_validation_issues: ValidationIssue[];
     extra_answers: Answer[];
     [key: string]: any;
     constructor(props: AnswerProperties, id: string);
@@ -96,7 +108,7 @@ export declare class Answer implements AnswerInterface {
     reset_content(): void;
     get content_changed(): boolean;
     get selected_option(): Option | undefined;
-    find_issues: (current_item: Item, state: Questionnaire, include_children?: boolean) => string[];
+    check_validation(current_item: Item, state: Questionnaire, include_children?: boolean): ValidationIssue[];
     get last_answer_utc_time(): string | undefined;
     to_row: (include_children?: boolean) => AnswerRow | AnswerRow[];
 }

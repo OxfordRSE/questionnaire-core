@@ -1,4 +1,14 @@
-import {Answer, AnswerProperties, AnswerType, as_answers, Item, Option, Questionnaire} from "../src";
+import {
+  Answer,
+  AnswerProperties,
+  AnswerType,
+  as_answers,
+  Item,
+  Option,
+  Questionnaire,
+  Validators,
+  ValidatorsWithProps
+} from "../src";
 import {describe, expect, it, MockInstance, vi} from "vitest";
 
 describe("Answer interpolation", () => {
@@ -89,6 +99,43 @@ describe("Option interpolation", () => {
   })
 })
 
+describe("Validators", () => {
+  it("should cascade validation", () => {
+    const q = new Questionnaire({
+      items: [
+        {
+          id: "test",
+          question: "how do you do?",
+          answers: [
+            {
+              type: AnswerType.TEXT,
+              validators: [Validators.REQUIRED],
+              extra_answers: [
+                {
+                  type: AnswerType.NUMBER,
+                  validators: [Validators.REQUIRED]
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      onComplete: () => {}
+    })
+    q.check_validation();
+    expect(q.validation_issues.length).to.eq(2);
+    expect(q.current_item.validation_issues.length).to.eq(2);
+    expect(q.current_item.answer.validation_issues.length).to.eq(2);
+    expect(q.current_item.answer.own_validation_issues.length).to.eq(1);
+    q.current_item.answer.content = "how do you do?";
+    q.check_validation();
+    expect(q.validation_issues.length).to.eq(1);
+    expect(q.current_item.validation_issues.length).to.eq(1);
+    expect(q.current_item.answer.validation_issues.length).to.eq(1);
+    expect(q.current_item.answer.own_validation_issues.length).to.eq(0);
+  })
+})
+
 describe("Basic questionnaire flow", () => {
   it("should set current_item", () => {
     // Define a simple Questionnaire with a couple of simple questions
@@ -135,7 +182,7 @@ describe("Basic questionnaire flow", () => {
     // @ts-ignore
     const nav: MockInstance = vi.spyOn(Q.getItemById("item_3"), 'getNextItemId');
     // @ts-ignore
-    const check: MockInstance = vi.spyOn(Q.getItemById("item_1").answer, 'find_issues');
+    const check: MockInstance = vi.spyOn(Q.getItemById("item_1").answer, 'check_validation');
 
     expect(Q.current_item?.id).to.eq("item_0");
     Q.next_q();

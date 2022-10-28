@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.ContentChangeSource = exports.AnswerType = void 0;
+exports.ValidationIssueLevel = exports.ContentChangeSource = exports.AnswerType = void 0;
 /**
  * AnswerType controls how frontends render answers
  */
@@ -26,3 +26,9 @@ var ContentChangeSource;
     ContentChangeSource[ContentChangeSource["Reset"] = 0] = "Reset";
     ContentChangeSource[ContentChangeSource["User"] = 1] = "User";
 })(ContentChangeSource = exports.ContentChangeSource || (exports.ContentChangeSource = {}));
+var ValidationIssueLevel;
+(function (ValidationIssueLevel) {
+    ValidationIssueLevel[ValidationIssueLevel["INFO"] = 0] = "INFO";
+    ValidationIssueLevel[ValidationIssueLevel["WARNING"] = 1] = "WARNING";
+    ValidationIssueLevel[ValidationIssueLevel["ERROR"] = 2] = "ERROR";
+})(ValidationIssueLevel = exports.ValidationIssueLevel || (exports.ValidationIssueLevel = {}));

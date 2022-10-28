@@ -9,12 +9,13 @@ var __spreadArray = (this && this.__spreadArray) || function (to, from, pack) {
     return to.concat(ar || Array.prototype.slice.call(from));
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.get_type_name = exports.as_items = exports.as_options = exports.as_answers = exports.Option = exports.Answer = exports.Item = exports.CounterSet = exports.Counter = exports.Questionnaire = void 0;
+exports.get_type_name = exports.as_items = exports.as_options = exports.as_answers = exports.Option = exports.Answer = exports.ValidatorsWithProps = exports.Validators = exports.Validator = exports.Item = exports.CounterSet = exports.Counter = exports.Questionnaire = void 0;
 var types_1 = require("./types");
 var Questionnaire = /** @class */ (function () {
     function Questionnaire(props) {
         this._data = undefined;
         this.item_history = [];
+        this.validation_issues = [];
         this.items = (0, exports.as_items)(props.items);
         this.onComplete = props.onComplete;
         this.counters = new CounterSet(this);
@@ -29,7 +30,7 @@ var Questionnaire = /** @class */ (function () {
         // Process answer
         this.current_item.handleAnswer(this.current_item.last_changed_answer, this.current_item, this);
         this.item_history.push(this.current_item);
-        var fails = this.current_item.find_issues(this);
+        var fails = this.current_item.check_validation(this);
         if (fails.length) {
             console.warn.apply(console, __spreadArray(["Cannot proceed for the following reasons:"], fails, false));
             return;
@@ -81,6 +82,13 @@ var Questionnaire = /** @class */ (function () {
         configurable: true
     });
     ;
+    Questionnaire.prototype.check_validation = function () {
+        var _this = this;
+        var errors = [];
+        this.items.forEach(function (i) { return errors.push.apply(errors, i.check_validation(_this)); });
+        this.validation_issues = errors;
+        return this.validation_issues;
+    };
     return Questionnaire;
 }());
 exports.Questionnaire = Questionnaire;
@@ -221,12 +229,7 @@ var CounterSet = /** @class */ (function () {
 exports.CounterSet = CounterSet;
 var Item = /** @class */ (function () {
     function Item(props) {
-        var _this = this;
-        this.find_issues = function (state) {
-            var fails = [];
-            _this.answers.forEach(function (a) { return fails.push.apply(fails, a.find_issues(_this, state)); });
-            return fails;
-        };
+        this.validation_issues = [];
         if (!props.id)
             throw "An Item must have an id";
         this.id = props.id;
@@ -293,6 +296,13 @@ var Item = /** @class */ (function () {
         configurable: true
     });
     ;
+    Item.prototype.check_validation = function (state) {
+        var _this = this;
+        var errors = [];
+        this.answers.forEach(function (a) { return errors.push.apply(errors, a.check_validation(_this, state, true)); });
+        this.validation_issues = errors;
+        return this.validation_issues;
+    };
     Object.defineProperty(Item.prototype, "as_rows", {
         get: function () {
             var rows = [];
@@ -312,17 +322,49 @@ var Item = /** @class */ (function () {
     return Item;
 }());
 exports.Item = Item;
+var Validator = function (fn, level) {
+    if (level === void 0) { level = types_1.ValidationIssueLevel.ERROR; }
+    return function (ans, item, state) {
+        var s = fn(ans, item, state);
+        if (typeof s === "string")
+            return {
+                answer_id: ans.id,
+                level: level,
+                issue: s,
+                validator: fn,
+                last_checked_utc_time: new Date().toUTCString(),
+            };
+        return null;
+    };
+};
+exports.Validator = Validator;
+exports.Validators = {
+    REQUIRED: (0, exports.Validator)(function (ans) {
+        if (!ans.content_changed)
+            return "An answer is required";
+        if (typeof ans.content === "undefined")
+            return "Answer cannot be blank";
+        return null;
+    }),
+    NOT_BLANK: (0, exports.Validator)(function (ans) {
+        if (typeof ans.content === "undefined")
+            return "Answer cannot be blank";
+        return null;
+    }),
+};
+exports.ValidatorsWithProps = {
+    OF_TYPE: function (t) { return (0, exports.Validator)(function (ans) {
+        if (typeof ans.content !== t)
+            return "Answer must be a ".concat(t);
+        return null;
+    }); },
+};
 var Answer = /** @class */ (function () {
     function Answer(props, id) {
         var _this = this;
         this.content_history = [];
-        this.find_issues = function (current_item, state, include_children) {
-            if (include_children === void 0) { include_children = true; }
-            var issues = [];
-            issues.push.apply(issues, _this.check_answer_fun(_this, current_item, state));
-            _this.extra_answers.forEach(function (a) { return issues.push.apply(issues, a.find_issues(current_item, state, include_children)); });
-            return issues;
-        };
+        this.validation_issues = [];
+        this.own_validation_issues = [];
         this.to_row = function (include_children) {
             if (include_children === void 0) { include_children = true; }
             if (_this.to_row_fun)
@@ -375,10 +417,10 @@ var Answer = /** @class */ (function () {
             this.default_content = props.default_content;
         else
             this.default_content = undefined;
-        if (props.check_answer_fun)
-            this.check_answer_fun = props.check_answer_fun;
+        if (props.validators)
+            this.validators = props.validators;
         else
-            this.check_answer_fun = function () { return []; };
+            this.validators = [];
         if (props.to_row_fun)
             this.to_row_fun = props.to_row_fun;
     }
@@ -433,6 +475,24 @@ var Answer = /** @class */ (function () {
         enumerable: false,
         configurable: true
     });
+    Answer.prototype.check_validation = function (current_item, state, include_children) {
+        var _a, _b;
+        var _this = this;
+        var errors = [];
+        current_item.validation_issues = current_item.validation_issues.filter(function (e) { return e.answer_id !== _this.id; });
+        state.validation_issues = state.validation_issues.filter(function (e) { return e.answer_id !== _this.id; });
+        this.validators.forEach(function (v) {
+            var s = v(_this, current_item, state);
+            if (s !== null)
+                errors.push(s);
+        });
+        this.own_validation_issues = __spreadArray([], errors, true);
+        (_a = current_item.validation_issues).push.apply(_a, errors);
+        (_b = state.validation_issues).push.apply(_b, errors);
+        this.extra_answers.forEach(function (a) { return errors.push.apply(errors, a.check_validation(current_item, state, include_children)); });
+        this.validation_issues = errors;
+        return include_children ? this.validation_issues : this.own_validation_issues;
+    };
     Object.defineProperty(Answer.prototype, "last_answer_utc_time", {
         get: function () {
             if (this.content_history.length)

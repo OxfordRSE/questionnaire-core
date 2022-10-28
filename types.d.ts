@@ -28,7 +28,7 @@ export declare type AnswerProperties = {
     id?: string;
     type: AnswerType;
     default_content?: any;
-    check_answer_fun?: (self: Answer, current_item: Item, state: Questionnaire) => string[];
+    validators?: AnswerValidator[];
     to_row_fun?: (self: Answer, include_children?: boolean) => AnswerRow | AnswerRow[];
     label?: string;
     extra_answers?: AnswerLike | AnswerLike[];
@@ -49,7 +49,6 @@ export declare enum ContentChangeSource {
 export interface AnswerInterface {
     readonly id: string;
     readonly data_id?: string;
-    check_answer_fun: (self: Answer, current_item: Item, state: Questionnaire) => string[];
     type: AnswerType;
     default_content: any;
     raw_content: any;
@@ -63,7 +62,10 @@ export interface AnswerInterface {
         content: any;
         source: ContentChangeSource;
     }[];
-    find_issues: (current_item: Item, state: Questionnaire, include_children?: boolean) => string[];
+    validators: AnswerValidator[];
+    validation_issues: ValidationIssue[];
+    own_validation_issues: ValidationIssue[];
+    check_validation: (current_item: Item, state: Questionnaire, include_children?: boolean) => ValidationIssue[];
     to_row: (include_children?: boolean) => AnswerRow | AnswerRow[];
     label?: string;
     extra_answers: Answer[];
@@ -145,7 +147,8 @@ export interface ItemInterface {
     answer: Answer;
     last_changed_answer: Answer | undefined;
     answer_utc_time?: string;
-    find_issues: (state: Questionnaire) => (string[] | false);
+    validation_issues: ValidationIssue[];
+    check_validation: (state: Questionnaire) => ValidationIssue[];
     next_item: (last_changed_answer: Answer | undefined, current_item: Item, state: Questionnaire) => Item | undefined;
     as_rows: AnswerRow[];
 }
@@ -157,6 +160,28 @@ export declare type QuestionnaireProperties = {
     items: (Item | ItemProperties)[];
     onComplete: (state: Questionnaire) => void;
 };
+/**
+ * Questionnaires proceed through their Items by collecting answers and
+ * determining the next Item on the basis of the answer.
+ *
+ * Support for undoing actions is provided via Questionnaire.last_q()
+ *
+ * The output of a Questionnaire is returned using Questionnaire.data
+ */
+export interface QuestionnaireInterface {
+    readonly counters: CounterSet;
+    readonly items: Item[];
+    readonly onComplete: (state: Questionnaire) => void;
+    current_item: Item | undefined;
+    item_history: Item[] | [];
+    next_q: (ans: AnswerLike) => void;
+    last_q: () => void;
+    validation_issues: ValidationIssue[];
+    check_validation: () => ValidationIssue[];
+    getItemById: (id: string) => Item;
+    next_item_in_sequence_id: string | null;
+    data: any;
+}
 /**
  * Counters track the operations made to them by Items.
  * This allows the counters' state to be restored if an Item's answer is undone.
@@ -182,26 +207,6 @@ export declare type ProcessAnswerFun = (last_changed_answer: Answer | undefined,
  */
 export declare type NextItemFun = (last_changed_answer: Answer | undefined, current_item: Item, state: Questionnaire) => string | null;
 /**
- * Questionnaires proceed through their Items by collecting answers and
- * determining the next Item on the basis of the answer.
- *
- * Support for undoing actions is provided via Questionnaire.last_q()
- *
- * The output of a Questionnaire is returned using Questionnaire.data
- */
-export interface QuestionnaireInterface {
-    readonly counters: CounterSet;
-    readonly items: Item[];
-    readonly onComplete: (state: Questionnaire) => void;
-    current_item: Item | undefined;
-    item_history: Item[] | [];
-    next_q: (ans: AnswerLike) => void;
-    last_q: () => void;
-    getItemById: (id: string) => Item;
-    next_item_in_sequence_id: string | null;
-    data: any;
-}
-/**
  * A Counter is defined by a unique name.
  * Counter contents can be altered by an Item,
  * and an Item's alterations to the Counter can be reverted.
@@ -223,6 +228,20 @@ export interface CounterSetInterface {
     increment: (name: string, content: number, source?: Item) => void;
     revert: (source: Item) => void;
 }
+export declare enum ValidationIssueLevel {
+    INFO = 0,
+    WARNING = 1,
+    ERROR = 2
+}
+export interface ValidationIssue {
+    answer_id: string;
+    level: ValidationIssueLevel;
+    issue: string;
+    validator: AnswerValidator;
+    last_checked_utc_time: string;
+}
+export declare type AnswerValidatorFunction = (answer: Answer, item: Item, state: Questionnaire) => string | null;
+export declare type AnswerValidator = (answer: Answer, item: Item, state: Questionnaire) => ValidationIssue | null;
 /**
  * A question may or may not have one or more Answers supplied.
  */
