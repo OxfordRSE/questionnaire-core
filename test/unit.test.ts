@@ -102,6 +102,8 @@ describe("Option interpolation", () => {
 describe("Validators", () => {
   it("should cascade validation", () => {
     const q = new Questionnaire({
+      name: "testQ",
+      introduction: "x",
       items: [
         {
           id: "test",
@@ -140,6 +142,8 @@ describe("Basic questionnaire flow", () => {
   it("should set current_item", () => {
     // Define a simple Questionnaire with a couple of simple questions
     const Q = new Questionnaire({
+      name: "testQ",
+      introduction: "x",
       items: [
         new Item({
           id: "item_0",

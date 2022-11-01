@@ -1,9 +1,13 @@
 import type { AnswerInterface, AnswerLike, AnswerProperties, AnswerRow, AnswerValidator, AnswerValidatorFunction, CounterInterface, CounterOperation, CounterSetInterface, ItemInterface, ItemLike, ItemProperties, NextItemFun, OptionInterface, OptionLike, OptionProperties, ProcessAnswerFun, QuestionnaireInterface, QuestionnaireProperties, ValidationIssue } from "./types";
 import { AnswerType, ContentChangeSource, ValidationIssueLevel } from "./types";
 export declare class Questionnaire implements QuestionnaireInterface {
+    readonly name: string;
+    readonly introduction: string;
+    readonly citation?: string;
     readonly counters: CounterSet;
     readonly items: Item[];
     readonly onComplete: (state: Questionnaire) => void;
+    reset_items_on_back: boolean;
     private _data;
     current_item: Item | undefined;
     item_history: Item[];

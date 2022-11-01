@@ -157,8 +157,12 @@ export interface ItemInterface {
  * execute when the items have been completed.
  */
 export declare type QuestionnaireProperties = {
+    name: string;
+    introduction: string;
+    citation?: string;
     items: (Item | ItemProperties)[];
     onComplete: (state: Questionnaire) => void;
+    reset_items_on_back?: boolean;
 };
 /**
  * Questionnaires proceed through their Items by collecting answers and
@@ -169,9 +173,13 @@ export declare type QuestionnaireProperties = {
  * The output of a Questionnaire is returned using Questionnaire.data
  */
 export interface QuestionnaireInterface {
+    readonly name: string;
+    readonly introduction: string;
+    readonly citation?: string;
     readonly counters: CounterSet;
     readonly items: Item[];
     readonly onComplete: (state: Questionnaire) => void;
+    reset_items_on_back: boolean;
     current_item: Item | undefined;
     item_history: Item[] | [];
     next_q: (ans: AnswerLike) => void;

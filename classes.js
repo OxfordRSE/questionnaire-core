@@ -16,9 +16,17 @@ var Questionnaire = /** @class */ (function () {
         this._data = undefined;
         this.item_history = [];
         this.validation_issues = [];
+        if (!props.name)
+            throw "Questionnaire must have a name";
+        this.name = props.name;
+        if (!props.introduction)
+            throw "Questionnaire must have a description";
+        this.introduction = props.introduction;
+        this.citation = typeof props.citation === "string" ? props.citation : "";
         this.items = (0, exports.as_items)(props.items);
         this.onComplete = props.onComplete;
         this.counters = new CounterSet(this);
+        this.reset_items_on_back = !!props.reset_items_on_back;
         if (!this.items.length)
             throw "Questionnaire requires at least one item";
         this.current_item = this.items[0];
@@ -40,7 +48,7 @@ var Questionnaire = /** @class */ (function () {
             this.onComplete(this);
     };
     Questionnaire.prototype.last_q = function () {
-        if (typeof this.current_item !== "undefined")
+        if (this.reset_items_on_back && typeof this.current_item !== "undefined")
             this.current_item.answers.forEach(function (a) { return a.reset_content(); });
         var q = this.item_history.pop();
         if (!q) {
@@ -358,6 +366,46 @@ exports.ValidatorsWithProps = {
             return "Answer must be a ".concat(t);
         return null;
     }); },
+    GT: function (x) { return (0, exports.Validator)(function (ans) {
+        try {
+            if (ans.content > x)
+                return null;
+        }
+        catch (e) {
+            console.error({ validation_error: "Validation error [GT]", x: x, error: e });
+        }
+        return "Answer must be greater than ".concat(x);
+    }); },
+    GTE: function (x) { return (0, exports.Validator)(function (ans) {
+        try {
+            if (ans.content >= x)
+                return null;
+        }
+        catch (e) {
+            console.error({ validation_error: "Validation error [GTE]", x: x, error: e });
+        }
+        return "Answer must be ".concat(x, " or larger");
+    }); },
+    LT: function (x) { return (0, exports.Validator)(function (ans) {
+        try {
+            if (ans.content < x)
+                return null;
+        }
+        catch (e) {
+            console.error({ validation_error: "Validation error [LT]", x: x, error: e });
+        }
+        return "Answer must be less than ".concat(x);
+    }); },
+    LTE: function (x) { return (0, exports.Validator)(function (ans) {
+        try {
+            if (ans.content <= x)
+                return null;
+        }
+        catch (e) {
+            console.error({ validation_error: "Validation error [LTE]", x: x, error: e });
+        }
+        return "Answer must be ".concat(x, " or smaller");
+    }); },
 };
 var Answer = /** @class */ (function () {
     function Answer(props, id) {
@@ -378,16 +426,29 @@ var Answer = /** @class */ (function () {
                 answer_utc_time: undefined,
             };
             var rows = [out];
-            if (include_children)
+            if (include_children) {
                 _this.extra_answers.forEach(function (a) { return rows.push.apply(rows, a.to_row(include_children)); });
-            if (_this.type in [types_1.AnswerType.UNKNOWN, types_1.AnswerType.NONE])
+                if (_this.options)
+                    _this.options.forEach(function (o) { return o.extra_answers.forEach(function (a) { return rows.push.apply(rows, a.to_row(include_children)); }); });
+            }
+            if ([types_1.AnswerType.UNKNOWN, types_1.AnswerType.NONE].findIndex(function (t) { return t === _this.type; }) !== -1)
                 return include_children ? rows : out;
             if (_this.last_answer_utc_time)
                 out.answer_utc_time = _this.last_answer_utc_time;
-            if (_this.type in [types_1.AnswerType.RADIO, types_1.AnswerType.SELECT]) {
+            if ([types_1.AnswerType.RADIO, types_1.AnswerType.SELECT].findIndex(function (t) { return t === _this.type; }) !== -1) {
                 var selected = _this.options[_this.content];
                 out.label = selected.label;
                 out.content = selected.content;
+                return include_children ? rows : out;
+            }
+            if (_this.type === types_1.AnswerType.CHECKBOX) {
+                out.content = JSON.stringify(_this.content);
+                var labels_1 = [];
+                _this.options.forEach(function (o, i) {
+                    if (_this.content.findIndex(function (x) { return x === i; }) !== -1)
+                        labels_1.push(o.label || o.content);
+                });
+                out.label = JSON.stringify(labels_1);
                 return include_children ? rows : out;
             }
             out.label = _this.label;
@@ -406,17 +467,13 @@ var Answer = /** @class */ (function () {
         if (typeof props.type === "undefined")
             throw "An Answer must specify a type";
         this.type = props.type;
-        this._content = props.content || props.starting_content || undefined;
         if (props.extra_answers)
             this.extra_answers = (0, exports.as_answers)(props.extra_answers, this.id);
         else
             this.extra_answers = [];
         if (props.options)
             this.options = (0, exports.as_options)(props.options, this.id);
-        if (props.default_content)
-            this.default_content = props.default_content;
-        else
-            this.default_content = undefined;
+        this.default_content = props.default_content;
         if (props.validators)
             this.validators = props.validators;
         else
@@ -455,6 +512,9 @@ var Answer = /** @class */ (function () {
             content: this.default_content,
             source: types_1.ContentChangeSource.Reset
         });
+        this.extra_answers.forEach(function (a) { return a.reset_content(); });
+        if (this.options)
+            this.options.forEach(function (o) { return o.extra_answers.forEach(function (a) { return a.reset_content(); }); });
     };
     Object.defineProperty(Answer.prototype, "content_changed", {
         get: function () {
@@ -490,6 +550,8 @@ var Answer = /** @class */ (function () {
         (_a = current_item.validation_issues).push.apply(_a, errors);
         (_b = state.validation_issues).push.apply(_b, errors);
         this.extra_answers.forEach(function (a) { return errors.push.apply(errors, a.check_validation(current_item, state, include_children)); });
+        if (this.options)
+            this.options.forEach(function (o) { return o.extra_answers.forEach(function (a) { return errors.push.apply(errors, a.check_validation(current_item, state, include_children)); }); });
         this.validation_issues = errors;
         return include_children ? this.validation_issues : this.own_validation_issues;
     };

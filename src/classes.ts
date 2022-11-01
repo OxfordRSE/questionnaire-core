@@ -3,7 +3,8 @@ import type {
   AnswerLike,
   AnswerProperties,
   AnswerRow,
-  AnswerValidator, AnswerValidatorFunction,
+  AnswerValidator,
+  AnswerValidatorFunction,
   CounterInterface,
   CounterOperation,
   CounterSetInterface,
@@ -22,9 +23,13 @@ import type {
 import {AnswerType, ContentChangeSource, ValidationIssueLevel} from "./types";
 
 export class Questionnaire implements QuestionnaireInterface {
+  readonly name: string;
+  readonly introduction: string;
+  readonly citation?: string;
   readonly counters: CounterSet;
   readonly items: Item[];
   readonly onComplete: (state: Questionnaire) => void;
+  reset_items_on_back: boolean;
 
   private _data: any = undefined;
   current_item: Item | undefined;
@@ -32,9 +37,15 @@ export class Questionnaire implements QuestionnaireInterface {
   validation_issues: ValidationIssue[] = [];
 
   constructor(props: QuestionnaireProperties) {
+    if (!props.name) throw `Questionnaire must have a name`;
+    this.name = props.name;
+    if (!props.introduction) throw `Questionnaire must have a description`;
+    this.introduction = props.introduction;
+    this.citation = typeof props.citation === "string"? props.citation : "";
     this.items = as_items(props.items);
     this.onComplete = props.onComplete;
     this.counters = new CounterSet(this);
+    this.reset_items_on_back = !!props.reset_items_on_back;
 
     if (!this.items.length) throw `Questionnaire requires at least one item`;
     this.current_item = this.items[0];
@@ -68,7 +79,7 @@ export class Questionnaire implements QuestionnaireInterface {
   }
 
   last_q() {
-    if (typeof this.current_item !== "undefined")
+    if (this.reset_items_on_back && typeof this.current_item !== "undefined")
       this.current_item.answers.forEach(a => a.reset_content());
     const q = this.item_history.pop();
     if (!q) {
@@ -366,6 +377,38 @@ export const ValidatorsWithProps: { [name: string]: (props: any) => AnswerValida
     if (typeof ans.content !== t) return `Answer must be a ${t}`;
     return null;
   }),
+  GT: (x: number) => Validator((ans) => {
+    try {
+      if (ans.content > x) return null;
+    } catch (e) {
+      console.error({validation_error: `Validation error [GT]`, x, error: e})
+    }
+    return `Answer must be greater than ${x}`;
+  }),
+  GTE: (x: number) => Validator((ans) => {
+    try {
+      if (ans.content >= x) return null;
+    } catch (e) {
+      console.error({validation_error: `Validation error [GTE]`, x, error: e})
+    }
+    return `Answer must be ${x} or larger`;
+  }),
+  LT: (x: number) => Validator((ans) => {
+    try {
+      if (ans.content < x) return null;
+    } catch (e) {
+      console.error({validation_error: `Validation error [LT]`, x, error: e})
+    }
+    return `Answer must be less than ${x}`;
+  }),
+  LTE: (x: number) => Validator((ans) => {
+    try {
+      if (ans.content <= x) return null;
+    } catch (e) {
+      console.error({validation_error: `Validation error [LTE]`, x, error: e})
+    }
+    return `Answer must be ${x} or smaller`;
+  }),
 }
 
 export class Answer implements AnswerInterface {
@@ -392,7 +435,6 @@ export class Answer implements AnswerInterface {
 
     if (typeof props.type === "undefined") throw "An Answer must specify a type"
     this.type = props.type;
-    this._content = props.content || props.starting_content || undefined;
 
     if (props.extra_answers)
       this.extra_answers = as_answers(props.extra_answers, this.id);
@@ -401,9 +443,7 @@ export class Answer implements AnswerInterface {
     if (props.options)
       this.options = as_options(props.options, this.id);
 
-    if (props.default_content)
-      this.default_content = props.default_content;
-    else this.default_content = undefined;
+    this.default_content = props.default_content;
 
     if (props.validators)
       this.validators = props.validators;
@@ -438,6 +478,8 @@ export class Answer implements AnswerInterface {
       content: this.default_content,
       source: ContentChangeSource.Reset
     })
+    this.extra_answers.forEach(a => a.reset_content());
+    if (this.options) this.options.forEach((o: Option) => o.extra_answers.forEach(a => a.reset_content()))
   }
 
   get content_changed(): boolean {
@@ -466,6 +508,8 @@ export class Answer implements AnswerInterface {
     state.validation_issues.push(...errors);
 
     this.extra_answers.forEach(a => errors.push(...a.check_validation(current_item, state, include_children)));
+    if (this.options)
+      this.options.forEach((o: Option) => o.extra_answers.forEach(a => errors.push(...a.check_validation(current_item, state, include_children))));
     this.validation_issues = errors;
 
     return include_children? this.validation_issues : this.own_validation_issues;
@@ -489,16 +533,31 @@ export class Answer implements AnswerInterface {
         answer_utc_time: undefined,
       }
       const rows = [out];
-      if (include_children)
+      if (include_children) {
         this.extra_answers.forEach(a => rows.push(...<AnswerRow[]>a.to_row(include_children)));
+        if (this.options)
+          this.options.forEach((o: Option) => o.extra_answers.forEach(
+            a => rows.push(...<AnswerRow[]>a.to_row(include_children)
+          )))
+      }
 
-      if (this.type in [AnswerType.UNKNOWN, AnswerType.NONE])
+      if ([AnswerType.UNKNOWN, AnswerType.NONE].findIndex(t => t === this.type) !== -1)
         return include_children? rows : out;
       if (this.last_answer_utc_time) out.answer_utc_time = this.last_answer_utc_time;
-      if (this.type in [AnswerType.RADIO, AnswerType.SELECT]) {
+      if ([AnswerType.RADIO, AnswerType.SELECT].findIndex(t => t === this.type) !== -1) {
         const selected = this.options[this.content];
         out.label = selected.label;
         out.content = selected.content;
+        return include_children? rows : out ;
+      }
+      if (this.type === AnswerType.CHECKBOX) {
+        out.content = JSON.stringify(this.content);
+        const labels: string[] = [];
+        this.options.forEach((o: Option, i: number) => {
+          if (this.content.findIndex((x: number) => x === i) !== -1)
+            labels.push(o.label || o.content)
+        });
+        out.label = JSON.stringify(labels);
         return include_children? rows : out ;
       }
       out.label = this.label;
