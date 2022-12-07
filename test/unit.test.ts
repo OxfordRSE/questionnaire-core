@@ -4,10 +4,11 @@ import {
   AnswerType,
   as_answers,
   Item,
+  ItemValidators,
   Option,
   Questionnaire,
-  Validators,
-  ValidatorsWithProps
+  AnswerValidators,
+  AnswerValidatorsWithProps
 } from "../src";
 import {describe, expect, it, MockInstance, vi} from "vitest";
 
@@ -111,11 +112,11 @@ describe("Validators", () => {
           answers: [
             {
               type: AnswerType.TEXT,
-              validators: [Validators.REQUIRED],
+              validators: [AnswerValidators.REQUIRED],
               extra_answers: [
                 {
                   type: AnswerType.NUMBER,
-                  validators: [Validators.REQUIRED]
+                  validators: [AnswerValidators.REQUIRED]
                 }
               ]
             }
@@ -135,6 +136,34 @@ describe("Validators", () => {
     expect(q.current_item.validation_issues.length).to.eq(1);
     expect(q.current_item.answer.validation_issues.length).to.eq(1);
     expect(q.current_item.answer.own_validation_issues.length).to.eq(0);
+  })
+  it("should handle ItemValidators", () => {
+    const q = new Questionnaire({
+      name: "testQ",
+      introduction: "x",
+      items: [
+        {
+          id: "test",
+          question: "how do you do?",
+          answers: [
+            {
+              type: AnswerType.TEXT,
+              validators: [AnswerValidators.REQUIRED]
+            },
+            {
+              type: AnswerType.TEXT
+            }
+          ],
+          validators: [ItemValidators.REQUIRED]
+        }
+      ],
+      onComplete: () => {}
+    })
+    q.check_validation();
+    expect(q.validation_issues.length).to.eq(2);
+    q.current_item.answers[1].content = "how do you do?";
+    q.check_validation();
+    expect(q.validation_issues.length).to.eq(1);
   })
 })
 

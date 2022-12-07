@@ -63,8 +63,8 @@ export interface AnswerInterface {
   last_answer_utc_time: string | undefined;
   content_history: {utc_time: string, content: any, source: ContentChangeSource}[];
   validators: AnswerValidator[];
-  validation_issues: ValidationIssue[];
-  own_validation_issues: ValidationIssue[];
+  validation_issues: AnswerValidationIssue[];
+  own_validation_issues: AnswerValidationIssue[];
   check_validation: (current_item: Item, state: Questionnaire, include_children?: boolean) => ValidationIssue[];
   to_row: (include_children?: boolean) => AnswerRow | AnswerRow[];
   label?: string;
@@ -130,6 +130,7 @@ export type ItemProperties = {
   question: string;
   answers?: AnswerLike[];
   process_answer_fun?: ProcessAnswerFun;
+  validators?: ItemValidator[];
   next_item?: string | null | false;
   next_item_fun?: NextItemFun;
 };
@@ -154,8 +155,10 @@ export interface ItemInterface {
   last_changed_answer: Answer | undefined;
   answer_utc_time?: string;
 
+  validators: ItemValidator[];
   validation_issues: ValidationIssue[];
-  check_validation: (state: Questionnaire) => ValidationIssue[];
+  own_validation_issues: ItemValidationIssue[];
+  check_validation: (state: Questionnaire, include_children: boolean) => ValidationIssue[];
 
   next_item: (last_changed_answer: Answer | undefined, current_item: Item, state: Questionnaire) => Item | undefined;
   as_rows: AnswerRow[];
@@ -169,6 +172,7 @@ export type QuestionnaireProperties = {
   name: string;
   introduction: string;
   citation?: string;
+  version?: string;
   items: (Item | ItemProperties)[];
   onComplete: (state: Questionnaire) => void;
   reset_items_on_back?: boolean;
@@ -186,6 +190,7 @@ export interface QuestionnaireInterface {
   readonly name: string;
   readonly introduction: string;
   readonly citation?: string;
+  readonly version?: string;
   readonly counters: CounterSet;
   readonly items: Item[];
   readonly onComplete: (state: Questionnaire) => void;
@@ -273,15 +278,25 @@ export enum ValidationIssueLevel {
   WARNING,
   ERROR
 }
-export interface ValidationIssue {
+export interface ItemValidationIssue {
+  item_id: string,
+  level: ValidationIssueLevel,
+  issue: string,
+  validator: ItemValidator,
+  last_checked_utc_time: string,
+}
+export interface AnswerValidationIssue {
   answer_id: string,
   level: ValidationIssueLevel,
   issue: string,
   validator: AnswerValidator,
   last_checked_utc_time: string,
 }
+export type ValidationIssue = AnswerValidationIssue | ItemValidationIssue
+export type ItemValidatorFunction = (item: Item, state: Questionnaire) => string | null;
+export type ItemValidator = (item: Item, state: Questionnaire) => ItemValidationIssue | null;
 export type AnswerValidatorFunction = (answer: Answer, item: Item, state: Questionnaire) => string | null;
-export type AnswerValidator = (answer: Answer, item: Item, state: Questionnaire) => ValidationIssue | null;
+export type AnswerValidator = (answer: Answer, item: Item, state: Questionnaire) => AnswerValidationIssue | null;
 
 /**
  * A question may or may not have one or more Answers supplied.

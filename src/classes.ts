@@ -5,12 +5,16 @@ import type {
   AnswerRow,
   AnswerValidator,
   AnswerValidatorFunction,
+  AnswerValidationIssue,
   CounterInterface,
   CounterOperation,
   CounterSetInterface,
   ItemInterface,
   ItemLike,
   ItemProperties,
+  ItemValidator,
+  ItemValidatorFunction,
+  ItemValidationIssue,
   NextItemFun,
   OptionInterface,
   OptionLike,
@@ -26,6 +30,7 @@ export class Questionnaire implements QuestionnaireInterface {
   readonly name: string;
   readonly introduction: string;
   readonly citation?: string;
+  readonly version?: string;
   readonly counters: CounterSet;
   readonly items: Item[];
   readonly onComplete: (state: Questionnaire) => void;
@@ -42,6 +47,7 @@ export class Questionnaire implements QuestionnaireInterface {
     if (!props.introduction) throw `Questionnaire must have a description`;
     this.introduction = props.introduction;
     this.citation = typeof props.citation === "string"? props.citation : "";
+    this.version = typeof props.version === "string"? props.version : "";
     this.items = as_items(props.items);
     this.onComplete = props.onComplete;
     this.counters = new CounterSet(this);
@@ -264,6 +270,8 @@ export class Item implements ItemInterface {
 
   answers: Answer[];
   answer_utc_time?: string;
+  validators: ItemValidator[] = [];
+  own_validation_issues: ItemValidationIssue[] = [];
   validation_issues: ValidationIssue[] = [];
 
   constructor(props: ItemProperties) {
@@ -271,6 +279,7 @@ export class Item implements ItemInterface {
     this.id = props.id;
     if (!props.question) throw "An Item must have a question";
     this.question = props.question;
+    this.validators = props.validators || [];
     this.handleAnswer = props.process_answer_fun || function () {};
     if (props.next_item_fun) {
       this.getNextItemId = props.next_item_fun;
@@ -327,11 +336,25 @@ export class Item implements ItemInterface {
     return undefined;
   };
 
-  check_validation(state: Questionnaire): ValidationIssue[] {
-      const errors: ValidationIssue[] = [];
-      this.answers.forEach(a => errors.push(...a.check_validation(this, state, true)));
-      this.validation_issues = errors;
-      return this.validation_issues;
+  check_validation(state: Questionnaire, include_children: boolean = true): ValidationIssue[] {
+    state.validation_issues = state.validation_issues.filter(
+      e => !("item_id" in e) || e.item_id !== this.id
+    )
+    this.validation_issues = this.validation_issues.filter(
+      e => !("item_id" in e) || e.item_id !== this.id
+    )
+    this.own_validation_issues = [];
+      this.validators.forEach(v => {
+        const issue = v(this, state);
+        if (issue) this.own_validation_issues.push(issue);
+      })
+
+    if(!include_children) return this.own_validation_issues;
+
+    const errors: ValidationIssue[] = [...this.own_validation_issues];
+    this.answers.forEach(a => errors.push(...a.check_validation(this, state, true)));
+    this.validation_issues = errors;
+    return this.validation_issues;
   }
 
   get as_rows(): AnswerRow[] {
@@ -345,12 +368,49 @@ export class Item implements ItemInterface {
   };
 }
 
-export const Validator: (fn: AnswerValidatorFunction, level?: ValidationIssueLevel) => AnswerValidator =
+export const item_validator: (fn: ItemValidatorFunction, level?: ValidationIssueLevel) => ItemValidator =
+  (fn, level = ValidationIssueLevel.ERROR) =>
+    (item, state) => {
+      const s = fn(item, state);
+      if (typeof s === "string")
+        return <ItemValidationIssue>{
+          item_id: item.id,
+          level,
+          issue: s,
+          validator: fn,
+          last_checked_utc_time: new Date().toUTCString(),
+        };
+      return null;
+    }
+
+export const ItemValidatorsWithProps: { [name: string]: (props: any) => ItemValidator } = {
+  REQUIRED: (include_extra_answers: boolean) => item_validator((item) => {
+    const extras = (ans: Answer) => {
+      for (let e = 0; e < ans.extra_answers.length; e++) {
+        if (typeof ans.extra_answers[e].raw_content !== "undefined") return true;
+        if(extras(ans.extra_answers[e])) return true;
+      }
+      return false;
+    }
+    for (let i = 0; i < item.answers.length; i++) {
+      const ans = item.answers[i];
+      if (typeof ans.raw_content !== "undefined") return null;
+      if (include_extra_answers && extras(ans)) return null;
+    }
+    return "At least one answer is required";
+  })
+}
+
+export const ItemValidators: { [name: string]: ItemValidator } = {
+  REQUIRED: ItemValidatorsWithProps.REQUIRED(false),
+}
+
+export const answer_validator: (fn: AnswerValidatorFunction, level?: ValidationIssueLevel) => AnswerValidator =
   (fn, level = ValidationIssueLevel.ERROR) =>
     (ans, item, state) => {
     const s = fn(ans, item, state);
     if (typeof s === "string")
-      return <ValidationIssue>{
+      return <AnswerValidationIssue>{
         answer_id: ans.id,
         level,
         issue: s,
@@ -360,24 +420,24 @@ export const Validator: (fn: AnswerValidatorFunction, level?: ValidationIssueLev
     return null;
   }
 
-export const Validators: { [name: string]: AnswerValidator } = {
-  REQUIRED: Validator((ans) => {
+export const AnswerValidators: { [name: string]: AnswerValidator } = {
+  REQUIRED: answer_validator((ans) => {
     if (!ans.content_changed) return "An answer is required";
     if (typeof ans.content === "undefined") return "Answer cannot be blank";
     return null;
   }),
-  NOT_BLANK: Validator((ans) => {
+  NOT_BLANK: answer_validator((ans) => {
     if (typeof ans.content === "undefined") return "Answer cannot be blank";
     return null;
-  }),
+  })
 }
 
-export const ValidatorsWithProps: { [name: string]: (props: any) => AnswerValidator } = {
-  OF_TYPE: (t: string) => Validator((ans) => {
+export const AnswerValidatorsWithProps: { [name: string]: (props: any) => AnswerValidator } = {
+  OF_TYPE: (t: string) => answer_validator((ans) => {
     if (typeof ans.content !== t) return `Answer must be a ${t}`;
     return null;
   }),
-  GT: (x: number) => Validator((ans) => {
+  GT: (x: number) => answer_validator((ans) => {
     try {
       if (ans.content > x) return null;
     } catch (e) {
@@ -385,7 +445,7 @@ export const ValidatorsWithProps: { [name: string]: (props: any) => AnswerValida
     }
     return `Answer must be greater than ${x}`;
   }),
-  GTE: (x: number) => Validator((ans) => {
+  GTE: (x: number) => answer_validator((ans) => {
     try {
       if (ans.content >= x) return null;
     } catch (e) {
@@ -393,7 +453,7 @@ export const ValidatorsWithProps: { [name: string]: (props: any) => AnswerValida
     }
     return `Answer must be ${x} or larger`;
   }),
-  LT: (x: number) => Validator((ans) => {
+  LT: (x: number) => answer_validator((ans) => {
     try {
       if (ans.content < x) return null;
     } catch (e) {
@@ -401,7 +461,7 @@ export const ValidatorsWithProps: { [name: string]: (props: any) => AnswerValida
     }
     return `Answer must be less than ${x}`;
   }),
-  LTE: (x: number) => Validator((ans) => {
+  LTE: (x: number) => answer_validator((ans) => {
     try {
       if (ans.content <= x) return null;
     } catch (e) {
@@ -418,8 +478,8 @@ export class Answer implements AnswerInterface {
   default_content: any;
   content_history: { utc_time: string; content: any, source: ContentChangeSource }[] = [];
   validators: AnswerValidator[];
-  validation_issues: ValidationIssue[] = [];
-  own_validation_issues: ValidationIssue[] = [];
+  validation_issues: AnswerValidationIssue[] = [];
+  own_validation_issues: AnswerValidationIssue[] = [];
   extra_answers: Answer[];
   [key: string]: any;
 
@@ -495,10 +555,12 @@ export class Answer implements AnswerInterface {
     return undefined;
   }
 
-  check_validation(current_item: Item, state: Questionnaire, include_children?: boolean): ValidationIssue[] {
-    const errors: ValidationIssue[] = [];
-    current_item.validation_issues = current_item.validation_issues.filter(e => e.answer_id !== this.id);
-    state.validation_issues = state.validation_issues.filter(e => e.answer_id !== this.id);
+  check_validation(current_item: Item, state: Questionnaire, include_children?: boolean): AnswerValidationIssue[] {
+    const errors: AnswerValidationIssue[] = [];
+    current_item.validation_issues = current_item.validation_issues
+      .filter(e => !("answer_id" in e) || e.answer_id !== this.id);
+    state.validation_issues = state.validation_issues
+      .filter(e => !("answer_id" in e) || e.answer_id !== this.id);
     this.validators.forEach(v => {
       const s = v(this, current_item, state);
       if (s !== null) errors.push(s);

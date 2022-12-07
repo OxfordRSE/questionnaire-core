@@ -1,9 +1,10 @@
-import type { AnswerInterface, AnswerLike, AnswerProperties, AnswerRow, AnswerValidator, AnswerValidatorFunction, CounterInterface, CounterOperation, CounterSetInterface, ItemInterface, ItemLike, ItemProperties, NextItemFun, OptionInterface, OptionLike, OptionProperties, ProcessAnswerFun, QuestionnaireInterface, QuestionnaireProperties, ValidationIssue } from "./types";
+import type { AnswerInterface, AnswerLike, AnswerProperties, AnswerRow, AnswerValidator, AnswerValidatorFunction, AnswerValidationIssue, CounterInterface, CounterOperation, CounterSetInterface, ItemInterface, ItemLike, ItemProperties, ItemValidator, ItemValidatorFunction, ItemValidationIssue, NextItemFun, OptionInterface, OptionLike, OptionProperties, ProcessAnswerFun, QuestionnaireInterface, QuestionnaireProperties, ValidationIssue } from "./types";
 import { AnswerType, ContentChangeSource, ValidationIssueLevel } from "./types";
 export declare class Questionnaire implements QuestionnaireInterface {
     readonly name: string;
     readonly introduction: string;
     readonly citation?: string;
+    readonly version?: string;
     readonly counters: CounterSet;
     readonly items: Item[];
     readonly onComplete: (state: Questionnaire) => void;
@@ -75,19 +76,28 @@ export declare class Item implements ItemInterface {
     readonly conditional_routing: boolean;
     answers: Answer[];
     answer_utc_time?: string;
+    validators: ItemValidator[];
+    own_validation_issues: ItemValidationIssue[];
     validation_issues: ValidationIssue[];
     constructor(props: ItemProperties);
     next_item(last_changed_answer: Answer | undefined, current_item: Item, state: Questionnaire): (Item | undefined);
     get answer(): Answer;
     get last_changed_answer(): Answer | undefined;
-    check_validation(state: Questionnaire): ValidationIssue[];
+    check_validation(state: Questionnaire, include_children?: boolean): ValidationIssue[];
     get as_rows(): AnswerRow[];
 }
-export declare const Validator: (fn: AnswerValidatorFunction, level?: ValidationIssueLevel) => AnswerValidator;
-export declare const Validators: {
+export declare const item_validator: (fn: ItemValidatorFunction, level?: ValidationIssueLevel) => ItemValidator;
+export declare const ItemValidatorsWithProps: {
+    [name: string]: (props: any) => ItemValidator;
+};
+export declare const ItemValidators: {
+    [name: string]: ItemValidator;
+};
+export declare const answer_validator: (fn: AnswerValidatorFunction, level?: ValidationIssueLevel) => AnswerValidator;
+export declare const AnswerValidators: {
     [name: string]: AnswerValidator;
 };
-export declare const ValidatorsWithProps: {
+export declare const AnswerValidatorsWithProps: {
     [name: string]: (props: any) => AnswerValidator;
 };
 export declare class Answer implements AnswerInterface {
@@ -101,8 +111,8 @@ export declare class Answer implements AnswerInterface {
         source: ContentChangeSource;
     }[];
     validators: AnswerValidator[];
-    validation_issues: ValidationIssue[];
-    own_validation_issues: ValidationIssue[];
+    validation_issues: AnswerValidationIssue[];
+    own_validation_issues: AnswerValidationIssue[];
     extra_answers: Answer[];
     [key: string]: any;
     constructor(props: AnswerProperties, id: string);
@@ -112,7 +122,7 @@ export declare class Answer implements AnswerInterface {
     reset_content(): void;
     get content_changed(): boolean;
     get selected_option(): Option | undefined;
-    check_validation(current_item: Item, state: Questionnaire, include_children?: boolean): ValidationIssue[];
+    check_validation(current_item: Item, state: Questionnaire, include_children?: boolean): AnswerValidationIssue[];
     get last_answer_utc_time(): string | undefined;
     to_row: (include_children?: boolean) => AnswerRow | AnswerRow[];
 }
